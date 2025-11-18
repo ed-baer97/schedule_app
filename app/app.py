@@ -1,10 +1,11 @@
 # app/app.py
 from flask import Flask, request, jsonify, render_template # Добавлен render_template
-from .models import db, Teacher, Subject, Class, SubGroup, Room, Lesson, ClassSubjectRequirement, TeacherSubjectRequirement, TeacherSubject, Replacement # Добавлен Replacement
+from .models import db, Teacher, Subject, Class, SubGroup, Room, Lesson, ClassSubjectRequirement, TeacherSubjectRequirement, TeacherSubject, Replacement, Shift # Добавлен Replacement
 # app/app.py
 # ... (другие импорты) ...
 from .services import add_lesson, update_lesson, remove_lesson, validate_lesson, check_teacher_conflict, check_room_conflict, check_subgroup_conflict, get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject # Добавлены get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject
-# ... (остальные импорты и код) ...from .ai_assistant import handle_command_via_api # Импортируем заглушку
+# ... (остальные импорты и код)...
+from .ai_assistant import handle_command_via_api # Импортируем заглушку
 import os
 # --- НОВОЕ: Импорты для загрузки файлов ---
 from werkzeug.utils import secure_filename
@@ -38,6 +39,18 @@ def create_app():
     with app.app_context():
         db.create_all() # Создаём таблицы при запуске
 
+        # --- Добавим создание базовых смен при запуске, если их нет ---
+        if Shift.query.count() == 0:
+            print("Создание базовых смен...")
+            shift_1 = Shift(id=1, name="1 смена")
+            shift_2 = Shift(id=2, name="2 смена")
+            shift_3 = Shift(id=3, name="3 смена") # Добавляем 3-ю смену
+            db.session.add(shift_1)
+            db.session.add(shift_2)
+            db.session.add(shift_3)
+            db.session.commit()
+            print("Базовые смены созданы.")
+
         # --- УБРАЛИ БЛОК С ТЕСТОВЫМИ ДАННЫМИ (или оставьте, если нужно) ---
         # add_test_data = False
         # if add_test_data and Teacher.query.count() == 0:
@@ -47,9 +60,8 @@ def create_app():
 
 
     @app.route('/')
-    def index():
-        # Отдаём HTML-шаблон
-        return render_template('schedule.html') # Теперь render_template определена
+    def main_index(): # <-- Изменили имя функции на main_index
+        return render_template('index.html') # Главная страница
 
     # --- НОВЫЙ маршрут для загрузки данных ---
     @app.route('/upload_data', methods=['POST'])
@@ -117,9 +129,9 @@ def create_app():
 
         shift_filter = request.args.get('shift', type=int)
         # Начинаем с JOIN, чтобы получить доступ к смене класса через подгруппу
-        query = db.session.query(Lesson).join(SubGroup).join(Class)
+        query = db.session.query(Lesson).join(SubGroup).join(Class).join(Shift)
         if shift_filter:
-            query = query.filter(Class.shift == shift_filter)
+            query = query.filter(Shift.id == shift_filter)
 
         lessons = query.all()
 
@@ -189,7 +201,7 @@ def create_app():
             return jsonify({"error": "Не указана смена для экспорта."}), 400
 
         # Загружаем уроки для выбранной смены
-        query = db.session.query(Lesson).join(SubGroup).join(Class).filter(Class.shift == shift_filter)
+        query = db.session.query(Lesson).join(SubGroup).join(Class).join(Shift).filter(Shift.id == shift_filter)
         lessons = query.all()
 
         # Загружаем справочники
@@ -352,7 +364,7 @@ def create_app():
             return jsonify({"error": "ID смены не указан"}), 400
 
         # Начинаем с JOIN, чтобы получить доступ к смене класса через подгруппу
-        query = db.session.query(Lesson).join(SubGroup).join(Class).filter(Class.shift == shift_id)
+        query = db.session.query(Lesson).join(SubGroup).join(Class).join(Shift).filter(Shift.id == shift_id)
         lessons_to_delete = query.all()
 
         deleted_count = 0
@@ -374,12 +386,13 @@ def create_app():
             TeacherSubjectRequirement.query.delete()
             TeacherSubject.query.delete()
             Replacement.query.delete() # Теперь Replacement определён и импортирован
-            # Потом родительские
             SubGroup.query.delete()
             Room.query.delete()
             Class.query.delete()
             Subject.query.delete()
             Teacher.query.delete()
+            # Потом родительскую таблицу Shift
+            Shift.query.delete()
 
             db.session.commit()
             return jsonify({"message": "База данных успешно очищена."})
@@ -406,11 +419,12 @@ def create_app():
         return jsonify([{"id": t.id, "name": t.name} for t in teachers])
 
 
-    # --- API для получения списка смен ---
+    # --- API для получения списка смен (ОБНОВЛЁН) ---
     @app.route('/api/shifts', methods=['GET'])
     def get_shifts():
-        # Предположим, смены 1 и 2
-        return jsonify([{"id": 1, "name": "1 смена"}, {"id": 2, "name": "2 смена"}])
+        # Загружаем список смен из БД
+        shifts = Shift.query.all()
+        return jsonify([{"id": s.id, "name": s.name} for s in shifts])
 
     # --- API для получения требований класс-предмет (для JS) ---
     @app.route('/api/class_subject_requirements', methods=['GET'])
@@ -526,9 +540,9 @@ def create_app():
         shift_filter = request.args.get('shift', type=int) # Получаем параметр shift из URL
         query = Class.query
         if shift_filter:
-            query = query.filter(Class.shift == shift_filter)
+            query = query.join(Shift).filter(Shift.id == shift_filter)
         classes = query.all()
-        return jsonify([{"id": c.id, "name": c.name, "shift": c.shift} for c in classes])
+        return jsonify([{"id": c.id, "name": c.name, "shift_id": c.shift_id, "shift_name": c.shift.name if c.shift else "N/A"} for c in classes])
 
     @app.route('/api/subgroups', methods=['GET'])
     def get_subgroups():
@@ -546,9 +560,10 @@ def create_app():
     def get_lessons():
         shift_filter = request.args.get('shift', type=int) # Получаем параметр shift из URL
         # Начинаем с JOIN, чтобы получить доступ к смене класса через подгруппу
-        query = db.session.query(Lesson).join(SubGroup).join(Class)
+        query = db.session.query(Lesson).join(SubGroup).join(Class).join(Shift) # <-- Добавлен JOIN с Shift
         if shift_filter:
-            query = query.filter(Class.shift == shift_filter)
+            # query = query.filter(Class.shift == shift_filter) # <-- СТАРОЕ
+            query = query.filter(Shift.id == shift_filter) # <-- НОВОЕ: фильтр по ID смены через JOIN
 
         lessons = query.all()
         return jsonify([{
@@ -588,6 +603,99 @@ def create_app():
         else:
             return jsonify({"error": message}), 400
 
+    # ... (ваш существующий код до return app) ...
+
+    # --- API для админ-панели (Учителя и Специализации) ---
+    @app.route('/api/admin/teachers', methods=['GET'])
+    def get_admin_teachers():
+        teachers = Teacher.query.all()
+        return jsonify([{"id": t.id, "name": t.name} for t in teachers])
+
+    @app.route('/api/admin/teachers', methods=['POST'])
+    def create_teacher():
+        data = request.get_json()
+        name = data.get('name')
+        if not name:
+            return jsonify({"error": "Имя учителя не указано"}), 400
+
+        existing_teacher = Teacher.query.filter_by(name=name).first()
+        if existing_teacher:
+            return jsonify({"error": f"Учитель с именем '{name}' уже существует."}), 400
+
+        new_teacher = Teacher(name=name)
+        db.session.add(new_teacher)
+        db.session.commit()
+        return jsonify({"message": f"Учитель '{name}' успешно добавлен.", "id": new_teacher.id}), 201
+
+    @app.route('/api/admin/teachers/<int:teacher_id>', methods=['DELETE'])
+    def delete_teacher(teacher_id):
+        teacher = Teacher.query.get_or_404(teacher_id)
+
+        # Удаляем все специализации учителя перед удалением учителя
+        TeacherSubject.query.filter_by(teacher_id=teacher_id).delete()
+
+        db.session.delete(teacher)
+        db.session.commit()
+        return jsonify({"message": f"Учитель '{teacher.name}' и его специализации успешно удалены."})
+
+    @app.route('/api/admin/teacher_subjects', methods=['GET'])
+    def get_admin_teacher_subjects():
+        teacher_subjects = TeacherSubject.query.all()
+        return jsonify([{
+            "id": ts.id,
+            "teacher_id": ts.teacher_id,
+            "subject_id": ts.subject_id
+        } for ts in teacher_subjects])
+
+    @app.route('/api/admin/teacher_subjects', methods=['POST'])
+    def create_teacher_subject():
+        data = request.get_json()
+        teacher_id = data.get('teacher_id')
+        subject_id = data.get('subject_id')
+
+        if not teacher_id or not subject_id:
+            return jsonify({"error": "ID учителя и ID предмета не указаны"}), 400
+
+        # Проверим, существует ли учитель и предмет
+        teacher = Teacher.query.get(teacher_id)
+        subject = Subject.query.get(subject_id)
+        if not teacher or not subject:
+            return jsonify({"error": "Учитель или предмет не найдены."}), 404
+
+        # Проверим, не существует ли уже такая специализация
+        existing = TeacherSubject.query.filter_by(teacher_id=teacher_id, subject_id=subject_id).first()
+        if existing:
+            return jsonify({"error": f"Специализация учителя '{teacher.name}' по предмету '{subject.name}' уже существует."}), 400
+
+        new_ts = TeacherSubject(teacher_id=teacher_id, subject_id=subject_id)
+        db.session.add(new_ts)
+        db.session.commit()
+        return jsonify({"message": f"Специализация учителя '{teacher.name}' по предмету '{subject.name}' успешно добавлена.", "id": new_ts.id}), 201
+
+    @app.route('/api/admin/teacher_subjects/<int:ts_id>', methods=['DELETE'])
+    def delete_teacher_subject(ts_id):
+        ts = TeacherSubject.query.get_or_404(ts_id)
+
+        db.session.delete(ts)
+        db.session.commit()
+        # Найдем имена для сообщения
+        teacher_name = Teacher.query.get(ts.teacher_id).name
+        subject_name = Subject.query.get(ts.subject_id).name
+        return jsonify({"message": f"Специализация учителя '{teacher_name}' по предмету '{subject_name}' успешно удалена."})
+
+
+    # --- Маршрут для интерфейса расписания ---
+    @app.route('/schedule') # Можно оставить как / или изменить на /schedule
+    def schedule_interface(): # <-- Изменили имя функции на schedule_interface
+        return render_template('schedule.html') # Основной интерфейс расписания
+
+    # --- Маршрут для админ-панели ---
+    @app.route('/admin')
+    def admin_panel():
+        return render_template('admin_panel.html') # Админ-панель
+
+    # ... (остальные маршруты) ...
+
     return app
 
 # ... (предыдущий код app.py до parse_and_load_data) ...
@@ -613,12 +721,30 @@ def parse_and_load_data(filepath_hours, filepath_teachers):
     subjects_dict = {s.name: s for s in Subject.query.all()}
     rooms_dict = {r.name: r for r in Room.query.all()}
     subgroups_dict = {sg.name: sg for sg in SubGroup.query.all()} # Ключ: "5А-1", Значение: объект SubGroup
+    # Загрузим смены
+    shifts_dict = {s.id: s for s in Shift.query.all()} # Ключ: ID, Значение: объект Shift
 
     # --- ШАГ 3: Создание/Обновление классов, предметов, учителей, кабинетов ---
     # Классы
     for class_name in df_hours.index:
         if class_name not in classes_dict:
-            new_class = Class(name=class_name, shift=2) # Пример: всегда 2 смена
+            # default_shift_id = 2 # Или получите из файла, если он там есть
+            # default_shift_obj = Shift.query.get(default_shift_id)
+            # if not default_shift_obj:
+            #     print(f"Смена с ID {default_shift_id} не найдена. Создаём...")
+            #     default_shift_obj = Shift(id=default_shift_id, name=f"{default_shift_id} смена")
+            #     db.session.add(default_shift_obj)
+            #     db.session.flush() # Получаем ID, если он был None
+            # Пока что, если смена всегда 2, можно явно указать:
+            # Для гибкости, можно добавить колонку 'Смена' в Excel файл.
+            # Временно используем смену с ID 2, если она существует, иначе 1.
+            default_shift_id = 2
+            default_shift_obj = shifts_dict.get(default_shift_id)
+            if not default_shift_obj:
+                default_shift_id = 1
+                default_shift_obj = shifts_dict.get(default_shift_id)
+            # new_class = Class(name=class_name, shift=2) # <-- СТАРОЕ
+            new_class = Class(name=class_name, shift_id=default_shift_obj.id) # <-- НОВОЕ: используем shift_id
             db.session.add(new_class)
             db.session.flush() # Получаем ID
             classes_dict[class_name] = new_class

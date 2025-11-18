@@ -1,4 +1,5 @@
 # app/models.py
+
 from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy import UniqueConstraint, Index
 
@@ -38,9 +39,10 @@ class Class(db.Model): # Обычный класс, например "5А"
     __tablename__ = 'classes'
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(10), nullable=False) # напр. "5А"
-    shift = db.Column(db.Integer, nullable=False) # 1 или 2
+    shift_id = db.Column(db.Integer, db.ForeignKey('shifts.id'), nullable=False) # <-- НОВОЕ: поле для связи с Shift
+    shift = db.relationship('Shift', back_populates='classes') # <-- НОВОЕ: связь с моделью Shift
     # Связь с подгруппами
-    subgroups = db.relationship('SubGroup', back_populates='class_')
+    subgroups = db.relationship('SubGroup', back_populates='class_') # <-- Убедитесь, что 'subgroups' указано здесь
     # Связь с требованиями по количеству уроков (класс-предмет)
     requirements = db.relationship('ClassSubjectRequirement', back_populates='class_')
     # Связь с требованиями по количеству часов учителя (новая связь)
@@ -51,7 +53,7 @@ class SubGroup(db.Model): # Подгруппа класса, например "5
     id = db.Column(db.Integer, primary_key=True)
     name = db.Column(db.String(15), nullable=False) # напр. "5А-1", "5А-2" или просто "1", "2" внутри класса
     class_id = db.Column(db.Integer, db.ForeignKey('classes.id'), nullable=False)
-    class_ = db.relationship('Class', back_populates='subgroups')
+    class_ = db.relationship('Class', back_populates='subgroups') # <-- Убедитесь, что 'class_' указано здесь
     # Связь с уроками, которые посещает подгруппа
     lessons = db.relationship('Lesson', back_populates='subgroup')
     # Связь с требованиями по количеству часов учителя (новая связь)
@@ -141,3 +143,10 @@ class Replacement(db.Model):
     lesson = db.relationship('Lesson')
     original_teacher = db.relationship('Teacher', foreign_keys=[original_teacher_id])
     replacement_teacher = db.relationship('Teacher', foreign_keys=[replacement_teacher_id])
+
+# --- НОВАЯ МОДЕЛЬ: Shift ---
+class Shift(db.Model):
+    __tablename__ = 'shifts'
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(100), nullable=False)
+    classes = db.relationship('Class', back_populates='shift') # <-- Убедитесь, что 'classes' указано здесь

@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система Управления Расписанием</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_index.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Система Управления Расписанием</h1>
+        <p>Добро пожаловать в систему управления школьным расписанием.</p>
+
+        <!-- Навигационные ссылки -->
+        <div class="nav-links">
+            <a href="{{ url_for('main_index') }}">Главная</a>
+            <a href="{{ url_for('schedule_interface') }}">Расписание</a>
+            <a href="{{ url_for('admin_panel') }}">Админ-панель</a>
+        </div>
+
+        <div class="links">
+            <div class="link-item">
+                <a href="{{ url_for('main_index') }}">Главная (Эта страница)</a>
+                <div class="description">Текущая страница.</div>
+            </div>
+            <div class="link-item">
+                <a href="{{ url_for('schedule_interface') }}">Интерфейс Расписания</a>
+                <div class="description">Просмотр, редактирование, загрузка/экспорт данных.</div>
+            </div>
+            <div class="link-item">
+                <a href="{{ url_for('admin_panel') }}">Административная Панель</a>
+                <div class="description">Управление учителями и их специализациями.</div>
+            </div>
+        </div>
+    </div>
+</body>
+</html>

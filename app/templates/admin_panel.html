@@ -1,0 +1,348 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Админ-панель</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style_admin.css') }}">
+</head>
+<body>
+    <div class="container">
+        <h1>Административная панель</h1>
+
+        <!-- Навигационные ссылки -->
+        <div class="nav-links">
+            <a href="{{ url_for('main_index') }}">Главная</a>
+            <a href="{{ url_for('schedule_interface') }}">Расписание</a>
+        </div>
+
+        <!-- Уведомления -->
+        <div id="message-area"></div>
+
+        <!-- Управление Учителями -->
+        <div class="section">
+            <h2>Управление Учителями</h2>
+            <form id="teacher-form">
+                <div class="form-group">
+                    <label for="teacher-name">Имя учителя:</label>
+                    <input type="text" id="teacher-name" required placeholder="Введите имя учителя">
+                </div>
+                <button type="submit">Добавить Учителя</button>
+            </form>
+
+            <h3>Список Учителей</h3>
+            <table id="teachers-table">
+                <thead>
+                    <tr>
+                        <th>ID</th>
+                        <th>Имя</th>
+                        <th>Действия</th>
+                    </tr>
+                </thead>
+                <tbody id="teachers-tbody">
+                    <!-- Содержимое будет заполнено JS -->
+                </tbody>
+            </table>
+        </div>
+
+        <!-- Управление Специализациями (Учитель-Предмет) -->
+        <div class="section">
+            <h2>Управление Специализациями Учителей</h2>
+            <form id="teacher-subject-form">
+                <div class="form-group">
+                    <label for="ts-teacher">Учитель:</label>
+                    <select id="ts-teacher" required>
+                        <option value="">-- Выберите учителя --</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label for="ts-subject">Предмет:</label>
+                    <select id="ts-subject" required>
+                        <option value="">-- Выберите предмет --</option>
+                    </select>
+                </div>
+                <button type="submit">Добавить Специализацию</button>
+            </form>
+
+            <h3>Список Специализаций (по предметам)</h3>
+            <div id="grouped-teacher-subjects-container">
+                <!-- Содержимое будет заполнено JS -->
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // --- Глобальные переменные ---
+        let teachersList = [];
+        let subjectsList = [];
+        let teacherSubjectsList = []; // Для хранения всех специализаций
+
+        // --- Вспомогательные функции ---
+        function showMessage(message, type = 'success') {
+            const messageArea = document.getElementById('message-area');
+            const messageDiv = document.createElement('div');
+            messageDiv.className = `message ${type}`;
+            messageDiv.textContent = message;
+            messageArea.appendChild(messageDiv);
+
+            // Автоматически удаляем сообщение через 5 секунд
+            setTimeout(() => {
+                messageArea.removeChild(messageDiv);
+            }, 5000);
+        }
+
+        function populateSelect(elementId, list, valueKey, textKey, selectedValue = null) {
+            const selectElement = document.getElementById(elementId);
+            selectElement.innerHTML = '<option value="">-- Выберите --</option>';
+            list.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item[valueKey];
+                option.textContent = item[textKey];
+                if (item[valueKey] === selectedValue) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
+        }
+
+        // --- API функции ---
+        async function fetchTeachers() {
+            try {
+                const response = await fetch('/api/admin/teachers');
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки учителей: ${response.status}`);
+                }
+                teachersList = await response.json();
+                renderTeachersTable();
+                // Обновляем список учителей в форме специализации
+                populateSelect('ts-teacher', teachersList, 'id', 'name');
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function fetchSubjects() {
+            try {
+                const response = await fetch('/api/subjects'); // Используем существующий маршрут
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки предметов: ${response.status}`);
+                }
+                subjectsList = await response.json();
+                // Обновляем список предметов в форме специализации
+                populateSelect('ts-subject', subjectsList, 'id', 'name');
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function fetchTeacherSubjects() {
+            try {
+                const response = await fetch('/api/admin/teacher_subjects');
+                if (!response.ok) {
+                    throw new Error(`Ошибка загрузки специализаций: ${response.status}`);
+                }
+                teacherSubjectsList = await response.json();
+                renderGroupedTeacherSubjectsTable(teacherSubjectsList); // Обновлённый вызов
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function addTeacher(name) {
+            try {
+                const response = await fetch('/api/admin/teachers', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ name: name })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Ошибка добавления учителя');
+                }
+                const result = await response.json();
+                showMessage(result.message);
+                fetchTeachers(); // Обновляем список
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteTeacher(id) {
+            if (!confirm(`Вы уверены, что хотите удалить учителя с ID ${id}? Это также удалит все его специализации.`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/admin/teachers/${id}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Ошибка удаления учителя');
+                }
+                const result = await response.json();
+                showMessage(result.message);
+                fetchTeachers(); // Обновляем список
+                fetchTeacherSubjects(); // Обновляем список специализаций
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function addTeacherSubject(teacherId, subjectId) {
+            try {
+                const response = await fetch('/api/admin/teacher_subjects', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ teacher_id: teacherId, subject_id: subjectId })
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Ошибка добавления специализации');
+                }
+                const result = await response.json();
+                showMessage(result.message);
+                fetchTeacherSubjects(); // Обновляем список
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        async function deleteTeacherSubject(id) {
+            if (!confirm(`Вы уверены, что хотите удалить специализацию с ID ${id}?`)) {
+                return;
+            }
+            try {
+                const response = await fetch(`/api/admin/teacher_subjects/${id}`, {
+                    method: 'DELETE'
+                });
+                if (!response.ok) {
+                    const errorData = await response.json();
+                    throw new Error(errorData.error || 'Ошибка удаления специализации');
+                }
+                const result = await response.json();
+                showMessage(result.message);
+                fetchTeacherSubjects(); // Обновляем список
+            } catch (error) {
+                console.error(error);
+                showMessage(`Ошибка: ${error.message}`, 'error');
+            }
+        }
+
+        // --- Рендеринг таблиц ---
+        function renderTeachersTable() {
+            const tbody = document.getElementById('teachers-tbody');
+            tbody.innerHTML = '';
+            teachersList.forEach(teacher => {
+                const row = document.createElement('tr');
+                row.innerHTML = `
+                    <td>${teacher.id}</td>
+                    <td>${teacher.name}</td>
+                    <td><button type="button" onclick="deleteTeacher(${teacher.id})">Удалить</button></td>
+                `;
+                tbody.appendChild(row);
+            });
+        }
+
+        // --- НОВАЯ функция: Рендеринг сгруппированной таблицы ---
+        function renderGroupedTeacherSubjectsTable(list) {
+            const container = document.getElementById('grouped-teacher-subjects-container');
+            container.innerHTML = ''; // Очистить перед рендерингом
+
+            // Сгруппировать специализации по subject_id
+            const groupedBySubject = {};
+            list.forEach(ts => {
+                if (!groupedBySubject[ts.subject_id]) {
+                    groupedBySubject[ts.subject_id] = [];
+                }
+                groupedBySubject[ts.subject_id].push(ts);
+            });
+
+            // Отсортировать предметы по имени для стабильности
+            const sortedSubjectIds = Object.keys(groupedBySubject).map(Number).sort((a, b) => {
+                const nameA = subjectsList.find(s => s.id === a)?.name || '';
+                const nameB = subjectsList.find(s => s.id === b)?.name || '';
+                return nameA.localeCompare(nameB);
+            });
+
+            sortedSubjectIds.forEach(subjectId => {
+                const subjectName = subjectsList.find(s => s.id === subjectId)?.name || 'N/A';
+                // Отсортировать учителей по ID специализации (ts.id) внутри предмета
+                const subjectTeachers = groupedBySubject[subjectId].sort((a, b) => a.id - b.id);
+
+                // Создать секцию для предмета
+                const subjectSection = document.createElement('div');
+                subjectSection.className = 'subject-section';
+
+                const header = document.createElement('div');
+                header.className = 'subject-header';
+                header.textContent = subjectName;
+                subjectSection.appendChild(header);
+
+                const table = document.createElement('table');
+                table.className = 'subject-teachers-table';
+
+                const thead = document.createElement('thead');
+                thead.innerHTML = '<tr><th>ID Специализации</th><th>Учитель</th><th>Действия</th></tr>';
+                table.appendChild(thead);
+
+                const tbody = document.createElement('tbody');
+                subjectTeachers.forEach(ts => {
+                    const teacherName = teachersList.find(t => t.id === ts.teacher_id)?.name || 'N/A';
+                    const row = document.createElement('tr');
+                    row.innerHTML = `
+                        <td>${ts.id}</td>
+                        <td>${teacherName}</td>
+                        <td><button type="button" onclick="deleteTeacherSubject(${ts.id})">Удалить</button></td>
+                    `;
+                    tbody.appendChild(row);
+                });
+                table.appendChild(tbody);
+
+                subjectSection.appendChild(table);
+                container.appendChild(subjectSection);
+            });
+        }
+
+
+        // --- Обработчики форм ---
+        document.getElementById('teacher-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const nameInput = document.getElementById('teacher-name');
+            const name = nameInput.value.trim();
+            if (name) {
+                addTeacher(name);
+                nameInput.value = ''; // Очистить поле ввода
+            }
+        });
+
+        document.getElementById('teacher-subject-form').addEventListener('submit', (e) => {
+            e.preventDefault();
+            const teacherSelect = document.getElementById('ts-teacher');
+            const subjectSelect = document.getElementById('ts-subject');
+            const teacherId = parseInt(teacherSelect.value);
+            const subjectId = parseInt(subjectSelect.value);
+
+            if (teacherId && subjectId) {
+                addTeacherSubject(teacherId, subjectId);
+                teacherSelect.value = ''; // Сбросить выбор
+                subjectSelect.value = ''; // Сбросить выбор
+            } else {
+                showMessage('Выберите учителя и предмет.', 'error');
+            }
+        });
+
+        // --- Инициализация ---
+        document.addEventListener('DOMContentLoaded', () => {
+            fetchTeachers();
+            fetchSubjects();
+            fetchTeacherSubjects();
+        });
+    </script>
+</body>
+</html>
