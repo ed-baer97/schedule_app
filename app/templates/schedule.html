@@ -1,0 +1,1022 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Система расписания</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}">
+</head>
+<body>
+    <div id="controls-container">
+        <label for="shift-selector">Выберите смену:</label>
+        <select id="shift-selector">
+            <option value="">-- Выберите смену --</option>
+        </select>
+        <!-- Новый контейнер для контролов загрузки -->
+        <div id="upload-controls">
+            <label for="file-hours">Файл часов (Класс-Предмет):</label>
+            <input type="file" id="file-hours" accept=".xlsx, .xls" />
+            <label for="file-teachers">Файл нагрузки (Учитель-Предмет-Класс):</label>
+            <input type="file" id="file-teachers" accept=".xlsx, .xls" />
+            <button id="upload-btn">Загрузить и Обработать</button>
+        </div>
+        <!-- НОВЫЙ контейнер для контролов экспорта и очистки -->
+        <div id="export-controls">
+            <button id="export-btn">Экспорт в Excel (список)</button>
+            <button id="export-formatted-btn">Экспорт в Excel (таблица)</button> <!-- НОВАЯ КНОПКА -->
+            <button id="clear-schedule-btn">Очистить расписание (смена)</button>
+            <button id="clear-db-btn">Очистить БД (всё)</button>
+        </div>
+        <div id="upload-status"></div>
+    </div>
+    <div id="main-content">
+        <div id="schedule-container">
+            <h2>Расписание</h2>
+            <div id="schedule-table-container">
+                <table id="schedule-table">
+                    <thead>
+                        <tr id="schedule-headers">
+                            <!-- Содержимое будет заполнено JS -->
+                        </tr>
+                    </thead>
+                    <tbody id="schedule-body">
+                        <!-- Содержимое будет заполнено JS -->
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        <div id="chatbot-container">
+            <div id="chat-messages">
+                <!-- Сообщения чат-бота будут добавляться сюда -->
+                <div class="message bot-message">Привет! Я ваш помощник по расписанию. Выберите смену и введите команду.</div>
+            </div>
+            <div id="chat-input-container">
+                <input type="text" id="chat-input" placeholder="Введите команду...">
+                <button id="send-button">Отправить</button>
+            </div>
+        </div>
+    </div>
+    <!-- Модальное окно для редактирования -->
+    <div id="edit-modal">
+        <div class="modal-content">
+            <h3>Редактировать урок</h3>
+            <form id="edit-form">
+                <input type="hidden" id="edit-lesson-id">
+                <label for="edit-subject">Предмет:</label>
+                <select id="edit-subject" required></select>
+                <label for="edit-teacher">Учитель:</label>
+                <select id="edit-teacher" required></select>
+                <label for="edit-subgroup">Подгруппа:</label>
+                <select id="edit-subgroup" required></select>
+                <label for="edit-room">Кабинет:</label>
+                <select id="edit-room" required></select>
+                <!-- Поля для дня и урока (для возможности их изменения) -->
+                <label for="edit-day">День недели:</label>
+                <select id="edit-day" required>
+                    <option value="0">Понедельник</option>
+                    <option value="1">Вторник</option>
+                    <option value="2">Среда</option>
+                    <option value="3">Четверг</option>
+                    <option value="4">Пятница</option>
+                </select>
+                <label for="edit-slot">Номер урока:</label>
+                <select id="edit-slot" required>
+                    <option value="1">1</option>
+                    <option value="2">2</option>
+                    <option value="3">3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+                <div class="modal-buttons">
+                    <button type="button" id="cancel-edit">Отмена</button>
+                    <button type="submit" id="save-edit">Сохранить</button>
+                </div>
+            </form>
+        </div>
+    </div>
+    <script>
+        // --- Глобальные переменные ---
+        let scheduleData = [];
+        let teachersList = [];
+        let subjectsList = [];
+        let classesList = []; // Теперь содержит список классов для выбранной смены
+        let subgroupsList = [];
+        let roomsList = [];
+        let shiftsList = []; // Список смен
+        let currentShift = null; // Выбранная смена
+        let currentHighlightedTeacherId = null;
+        let currentHighlightedRoomId = null; // НОВОЕ: для подсветки кабинетов
+        // НОВОЕ: для требований
+        let classSubjectRequirementsList = []; // Список требований класс-предмет
+        // --- НОВОЕ: для отслеживания текущего класса в модальном окне ---
+        let currentClassId = null;
+        // --- Вспомогательные функции ---
+        function getDayName(dayIndex) {
+            const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'];
+            return days[dayIndex] || '';
+        }
+        function getDayNameFull(dayIndex) {
+            const days = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница'];
+            return days[dayIndex] || '';
+        }
+        function getDayIndex(dayName) {
+            const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'];
+            return days.indexOf(dayName);
+        }
+        // --- Загрузка данных ---
+        async function loadShifts() {
+            try {
+                const shiftsResponse = await fetch('/api/shifts');
+                shiftsList = await shiftsResponse.json();
+                const shiftSelector = document.getElementById('shift-selector');
+                shiftSelector.innerHTML = '<option value="">-- Выберите смену --</option>';
+                shiftsList.forEach(shift => {
+                    const option = document.createElement('option');
+                    option.value = shift.id;
+                    option.textContent = shift.name;
+                    shiftSelector.appendChild(option);
+                });
+                // Добавим обработчик изменения смены
+                shiftSelector.addEventListener('change', (e) => {
+                    currentShift = parseInt(e.target.value) || null;
+                    if (currentShift) {
+                        loadScheduleData(currentShift); // Загружаем данные для выбранной смены
+                        // НОВОЕ: Загружаем и требования
+                        loadClassSubjectRequirements(); // Загружаем требования при выборе смены
+                    } else {
+                        // Очистить таблицу, если смена не выбрана
+                        document.getElementById('schedule-headers').innerHTML = '';
+                        document.getElementById('schedule-body').innerHTML = '';
+                        addChatMessage("Смена не выбрана.", 'bot');
+                    }
+                });
+            } catch (error) {
+                console.error('Ошибка загрузки смен:', error);
+                addChatMessage(`Ошибка загрузки смен: ${error.message}`, 'bot');
+            }
+        }
+        async function loadClassSubjectRequirements() {
+            try {
+                const response = await fetch('/api/class_subject_requirements');
+                classSubjectRequirementsList = await response.json();
+            } catch (error) {
+                console.error('Ошибка загрузки требований по класс-предмет:', error);
+                // Можно продолжить с пустым списком, но валидация может работать некорректно
+                classSubjectRequirementsList = [];
+            }
+        }
+        async function loadScheduleData(shiftId) {
+            try {
+                // Загрузка справочников (учителя, предметы и т.д.)
+                // Загружаем все, но используем только для выбранной смены
+                const teachersResponse = await fetch('/api/teachers');
+                teachersList = await teachersResponse.json();
+                const subjectsResponse = await fetch('/api/subjects');
+                subjectsList = await subjectsResponse.json();
+                // Загрузка классов для выбранной смены
+                const classesResponse = await fetch(`/api/classes?shift=${shiftId}`);
+                classesList = await classesResponse.json();
+                const subgroupsResponse = await fetch('/api/subgroups');
+                subgroupsList = await subgroupsResponse.json();
+                const roomsResponse = await fetch('/api/rooms');
+                roomsList = await roomsResponse.json();
+                // Загрузка уроков для выбранной смены
+                const lessonsResponse = await fetch(`/api/lessons?shift=${shiftId}`);
+                scheduleData = await lessonsResponse.json();
+                renderSchedule();
+            } catch (error) {
+                console.error('Ошибка загрузки данных:', error);
+                addChatMessage(`Ошибка загрузки данных: ${error.message}`, 'bot');
+            }
+        }
+        // --- Отображение расписания (новая структура) ---
+        function renderSchedule() {
+            const headersRow = document.getElementById('schedule-headers');
+            const tbody = document.getElementById('schedule-body');
+            headersRow.innerHTML = ''; // Очистить перед рендерингом
+            tbody.innerHTML = ''; // Очистить перед рендерингом
+            // Создание заголовков (столбцы = классы)
+            const headerDayCell = document.createElement('th');
+            headerDayCell.textContent = 'День';
+            headerDayCell.style.position = 'sticky';
+            headerDayCell.style.left = '0';
+            headerDayCell.style.zIndex = '10';
+            headerDayCell.style.backgroundColor = '#f2f2f2'; // Убедимся, что фон заголовка виден
+            headersRow.appendChild(headerDayCell);
+            const headerLessonNumCell = document.createElement('th');
+            headerLessonNumCell.textContent = 'Урок';
+            headerLessonNumCell.style.position = 'sticky';
+            headerLessonNumCell.style.left = '70px'; // Ширина первого столбца + небольшой запас
+            headerLessonNumCell.style.zIndex = '10';
+            headerLessonNumCell.style.backgroundColor = '#f2f2f2'; // Убедимся, что фон заголовка виден
+            headersRow.appendChild(headerLessonNumCell);
+            classesList.forEach(cls => {
+                const headerCell = document.createElement('th');
+                headerCell.textContent = cls.name;
+                headersRow.appendChild(headerCell);
+            });
+            // Предположим, у нас 5 дней и 6 пар в день
+            const days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт'];
+            const maxLessons = 6;
+            // Группируем уроки по дню, номеру урока и classId
+            // lessonKey -> classId -> [lessonObject1, lessonObject2, ...]
+            const lessonsByDaySlotAndClass = {};
+            scheduleData.forEach(lesson => {
+                const classId = lesson.subgroup_id ? subgroupsList.find(sg => sg.id === lesson.subgroup_id)?.class_id : null;
+                if (!classId) return; // Пропускаем уроки без подгруппы или класса
+                const classObj = classesList.find(c => c.id === classId);
+                if (!classObj || classObj.shift !== currentShift) return; // Пропускаем уроки не из выбранной смены (на всякий случай)
+                const lessonKey = `${lesson.day_of_week}-${lesson.lesson_number}`;
+                if (!lessonsByDaySlotAndClass[lessonKey]) {
+                    lessonsByDaySlotAndClass[lessonKey] = {};
+                }
+                if (!lessonsByDaySlotAndClass[lessonKey][classId]) {
+                    lessonsByDaySlotAndClass[lessonKey][classId] = [];
+                }
+                lessonsByDaySlotAndClass[lessonKey][classId].push(lesson); // Добавляем урок в массив для класса в слоте
+            });
+            // Заполняем строки (уроки) - 5 дней * 7 строк (день + 6 уроков)
+            days.forEach((dayName, dayIndex) => {
+                const dayNameFull = getDayNameFull(dayIndex);
+                // Строка заголовка дня (первый столбец - день, второй - пустой, остальные - пустые)
+                const dayHeaderRow = document.createElement('tr');
+                const dayHeaderCell = document.createElement('td');
+                dayHeaderCell.textContent = dayNameFull;
+                dayHeaderCell.className = 'day-header-cell';
+                dayHeaderCell.rowSpan = maxLessons + 1; // Объединяет 7 строк: 1 день + 6 уроков
+                dayHeaderRow.appendChild(dayHeaderCell);
+                // Второй столбец в строке заголовка дня - пустой
+                const emptyHeaderCell = document.createElement('td');
+                emptyHeaderCell.textContent = '';
+                emptyHeaderCell.className = 'lesson-number-header'; // Добавим класс для стилизации
+                dayHeaderRow.appendChild(emptyHeaderCell);
+                // Вместо этого добавляем пустые ячейки, соответствующие количеству классов
+                classesList.forEach(cls => {
+                    const emptyCell = document.createElement('td');
+                    emptyCell.textContent = ''; // Оставляем пустым
+                    dayHeaderRow.appendChild(emptyCell);
+                });
+                tbody.appendChild(dayHeaderRow);
+                // Строки номеров уроков
+                for (let lessonNum = 1; lessonNum <= maxLessons; lessonNum++) {
+                    const lessonKey = `${dayIndex}-${lessonNum}`;
+                    const row = document.createElement('tr');
+                    // Ячейка с номером урока
+                    const lessonNumCell = document.createElement('td');
+                    lessonNumCell.textContent = lessonNum;
+                    lessonNumCell.className = 'lesson-number-header';
+                    row.appendChild(lessonNumCell);
+                    // Ячейки для каждого класса
+                    classesList.forEach(cls => {
+                        const cell = document.createElement('td');
+                        cell.className = 'lesson-cell';
+                        cell.dataset.day = dayIndex;
+                        cell.dataset.lessonNumber = lessonNum;
+                        cell.dataset.classId = cls.id; // ID класса для этой ячейки
+                        const lessonsInSlot = lessonsByDaySlotAndClass[lessonKey] && lessonsByDaySlotAndClass[lessonKey][cls.id];
+                        if (lessonsInSlot && lessonsInSlot.length > 0) {
+                            // Создаём контейнер для уроков
+                            const lessonsContainer = document.createElement('div');
+                            lessonsContainer.className = 'lessons-container';
+                            lessonsInSlot.forEach(lesson => {
+                                const lessonDiv = document.createElement('div');
+                                lessonDiv.className = 'lesson-details';
+                                lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
+                                lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
+                                // Найти соответствующие названия из списков
+                                const teacher = teachersList.find(t => t.id === lesson.teacher_id);
+                                const subject = subjectsList.find(s => s.id === lesson.subject_id);
+                                const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
+                                const room = roomsList.find(r => r.id === lesson.room_id);
+                                // Отображение: Предмет, Кабинет, Учитель
+                                lessonDiv.innerHTML = `
+                                    <div class="subject-name" data-subject-id="${lesson.subject_id}">${subject ? subject.name : 'N/A'}</div>
+                                    <div class="room-name" data-room-id="${lesson.room_id}">${room ? room.name : 'N/A'}</div>
+                                    <div class="teacher-name" data-teacher-id="${lesson.teacher_id}">${teacher ? teacher.name : 'N/A'}</div>
+                                `;
+                                lessonsContainer.appendChild(lessonDiv);
+                            });
+                            cell.appendChild(lessonsContainer);
+                        } else {
+                            // Пустая ячейка
+                            cell.textContent = 'Нет урока';
+                            cell.style.backgroundColor = '#f9f9f9';
+                        }
+                        row.appendChild(cell);
+                    });
+                    tbody.appendChild(row);
+                }
+            });
+            attachEventListeners();
+        }
+        // --- Подсветка учителя (новая логика) ---
+        function highlightTeacher(teacherId) {
+            // Сброс предыдущей подсветки учителя
+            if (currentHighlightedTeacherId !== null) {
+                document.querySelectorAll(`.teacher-name[data-teacher-id="${currentHighlightedTeacherId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.remove('highlighted-teacher');
+                });
+            }
+            // Сброс подсветки кабинета при подсветке учителя
+            if (currentHighlightedRoomId !== null) {
+                 document.querySelectorAll(`.room-name[data-room-id="${currentHighlightedRoomId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.remove('highlighted-room');
+                });
+                currentHighlightedRoomId = null;
+            }
+            // Установка новой подсветки учителя
+            if (teacherId) {
+                document.querySelectorAll(`.teacher-name[data-teacher-id="${teacherId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.add('highlighted-teacher');
+                });
+                currentHighlightedTeacherId = teacherId;
+            } else {
+                currentHighlightedTeacherId = null;
+            }
+        }
+        // --- Подсветка кабинета (новая логика) ---
+        function highlightRoom(roomId) {
+            // Сброс предыдущей подсветки кабинета
+            if (currentHighlightedRoomId !== null) {
+                document.querySelectorAll(`.room-name[data-room-id="${currentHighlightedRoomId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.remove('highlighted-room');
+                });
+            }
+            // Сброс подсветки учителя при подсветке кабинета
+            if (currentHighlightedTeacherId !== null) {
+                 document.querySelectorAll(`.teacher-name[data-teacher-id="${currentHighlightedTeacherId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.remove('highlighted-teacher');
+                });
+                currentHighlightedTeacherId = null;
+            }
+            // Установка новой подсветки кабинета
+            if (roomId) {
+                document.querySelectorAll(`.room-name[data-room-id="${roomId}"]`).forEach(el => {
+                    el.closest('.lesson-details').classList.add('highlighted-room');
+                });
+                currentHighlightedRoomId = roomId;
+            } else {
+                currentHighlightedRoomId = null;
+            }
+        }
+        // --- Взаимодействие с интерфейсом ---
+        function attachEventListeners() {
+            // Подсветка учителя при клике на его имя в уроке
+            // Используем event delegation на tbody
+            document.getElementById('schedule-body').addEventListener('click', (e) => {
+                if (e.target.classList.contains('teacher-name')) {
+                    e.stopPropagation(); // Останавливаем всплытие, чтобы не открывалась форма редактирования
+                    const teacherId = parseInt(e.target.dataset.teacherId);
+                    highlightTeacher(teacherId);
+                }
+                // Подсветка кабинета при клике на его имя в уроке
+                else if (e.target.classList.contains('room-name')) {
+                    e.stopPropagation(); // Останавливаем всплытие
+                    const roomId = parseInt(e.target.dataset.roomId);
+                    highlightRoom(roomId);
+                }
+            });
+            // --- ИСПРАВЛЕНО: Открытие формы редактирования/создания при клике ТОЛЬКО НА ЯЧЕЙКУ урока ---
+            document.getElementById('schedule-body').addEventListener('click', (e) => {
+                // Проверяем, что клик был по .lesson-cell или её потомкам, но НЕ по .teacher-name или .room-name
+                const clickedLessonCell = e.target.closest('.lesson-cell');
+                if (clickedLessonCell && !e.target.classList.contains('teacher-name') && !e.target.classList.contains('room-name')) {
+                    // СБРОСИТЬ ПОДСВЕТКИ УЧИТЕЛЯ И КАБИНЕТА при открытии окна редактирования
+                    if (currentHighlightedTeacherId !== null) {
+                         highlightTeacher(null);
+                    }
+                    if (currentHighlightedRoomId !== null) {
+                         highlightRoom(null);
+                    }
+                    // Получаем данные из найденной ячейки
+                    const day = parseInt(clickedLessonCell.dataset.day);
+                    const lessonNumber = parseInt(clickedLessonCell.dataset.lessonNumber);
+                    const classId = parseInt(clickedLessonCell.dataset.classId);
+                    // Проверяем, есть ли внутри div.lesson-details (т.е. был ли урок)
+                    // Теперь у нас может быть несколько .lesson-details
+                    const lessonDetailsDivs = clickedLessonCell.querySelectorAll('.lesson-details');
+                    if (lessonDetailsDivs.length > 0) {
+                        // --- НОВОЕ: Если есть уроки, показываем диалог ---
+                        showLessonOptionsDialog(clickedLessonCell, lessonDetailsDivs, day, lessonNumber, classId);
+                    } else {
+                        // Если div нет, значит ячейка пуста. Открываем окно создания.
+                        console.log("Клик на пустую ячейку:", "День:", day, "Урок:", lessonNumber, "Класс:", classId);
+                        openEditModal(null, day, lessonNumber, classId);
+                    }
+                }
+                // Если клик был не по .lesson-cell или по .teacher-name/.room-name, ничего не делаем.
+            });
+            // --- НОВОЕ: Сброс подсветки при клике в произвольное место ---
+            document.addEventListener('click', (e) => {
+                // Проверяем, что клик НЕ по имени учителя, НЕ по имени кабинета и НЕ внутри модального окна
+                const isClickOnTeacherName = e.target.closest('.teacher-name');
+                const isClickOnRoomName = e.target.closest('.room-name');
+                const isClickInsideModal = e.target.closest('#edit-modal');
+                const isClickInsideSchedule = e.target.closest('#schedule-body'); // Клик внутри таблицы расписания
+                // Сбрасываем подсветку только если клик был вне таблицы расписания И не по модальному окну
+                // Или если клик был по таблице, но НЕ по имени учителя/кабинета
+                if (!isClickInsideModal) {
+                    // Если клик был по таблице, но НЕ по имени учителя или кабинета - подсветка сбросится при открытии модального окна
+                    // Если клик был внутри таблицы И по имени учителя/кабинета - подсветка установится/изменится, как и задумано
+                    if (!isClickInsideSchedule) {
+                        // Клик был вне таблицы и вне модального окна - сбросить подсветку
+                        if (currentHighlightedTeacherId !== null) {
+                            highlightTeacher(null);
+                        }
+                        if (currentHighlightedRoomId !== null) {
+                            highlightRoom(null);
+                        }
+                    }
+                }
+            });
+            // Отправка команды ИИ-боту
+            document.getElementById('send-button').addEventListener('click', sendCommandToBot);
+            document.getElementById('chat-input').addEventListener('keypress', (e) => {
+                if (e.key === 'Enter') {
+                    sendCommandToBot();
+                }
+            });
+            // Закрытие модального окна
+            document.getElementById('cancel-edit').addEventListener('click', closeEditModal);
+            document.getElementById('edit-modal').addEventListener('click', (e) => {
+                if (e.target === document.getElementById('edit-modal')) {
+                    closeEditModal();
+                }
+            });
+            // Сохранение изменений урока
+            document.getElementById('edit-form').addEventListener('submit', saveLessonChanges);
+            // --- Обработчики для экспорта и очистки ---
+            document.getElementById('export-btn').addEventListener('click', handleExport);
+            document.getElementById('export-formatted-btn').addEventListener('click', handleExportFormatted); // НОВЫЙ ОБРАБОТЧИК
+            document.getElementById('clear-schedule-btn').addEventListener('click', handleClearSchedule);
+            document.getElementById('clear-db-btn').addEventListener('click', handleClearDatabase);
+            // --- Обработчики для загрузки ---
+            document.getElementById('upload-btn').addEventListener('click', handleFileUpload);
+        }
+        // --- НОВАЯ ФУНКЦИЯ: Показать диалог для выбора действия ---
+        function showLessonOptionsDialog(cell, lessonDivs, day, lessonNumber, classId) {
+            const lessonCount = lessonDivs.length;
+            let message = `В ячейке (${getDayName(day)}, ${lessonNumber} урок, ${classesList.find(c => c.id === classId)?.name || 'N/A'}) уже есть ${lessonCount} уроков.`;
+            message += "Выберите действие:";
+            message += "1. Редактировать один из существующих уроков.";
+            message += "2. Добавить новый урок (для другой подгруппы).";
+
+            // Запросим действие через prompt
+            let choice = prompt(message, "2"); // По умолчанию предлагаем добавить новый
+
+            // Проверим, что пользователь нажал "OK" и ввёл значение
+            if (choice === null) {
+                // Пользователь нажал "Отмена"
+                return; // Прерываем выполнение
+            }
+
+            // Преобразуем ввод в число
+            const parsedChoice = parseInt(choice);
+
+            if (isNaN(parsedChoice)) {
+                // Введено не число
+                addChatMessage("Ошибка: Введите число 1 или 2.", 'bot');
+                return;
+            }
+
+            if (parsedChoice === 1) {
+                // Показать список уроков и позволить выбрать ID для редактирования
+                const lessonList = Array.from(lessonDivs).map((div, index) => {
+                    const lessonId = div.dataset.lessonId;
+                    const subjectId = parseInt(div.querySelector('.subject-name')?.dataset.subjectId || 0);
+                    const teacherId = parseInt(div.querySelector('.teacher-name')?.dataset.teacherId || 0);
+                    const roomId = parseInt(div.querySelector('.room-name')?.dataset.roomId || 0);
+                    const subgroupId = parseInt(div.dataset.subgroupId || 0);
+                    const subject = subjectsList.find(s => s.id === subjectId)?.name || 'N/A';
+                    const teacher = teachersList.find(t => t.id === teacherId)?.name || 'N/A';
+                    const room = roomsList.find(r => r.id === roomId)?.name || 'N/A';
+                    const subgroup = subgroupsList.find(sg => sg.id === subgroupId)?.name || 'N/A';
+                    return `${index + 1}. ${subject}, ${teacher}, ${room}, ${subgroup} (ID: ${lessonId})`;
+                }).join('');
+                const lessonToEditInput = prompt(`Выберите урок для редактирования:${lessonList}Введите номер (1-${lessonCount}) или ID урока:`);
+
+                // Проверим, что пользователь нажал "OK" и ввёл значение
+                if (lessonToEditInput === null) {
+                    // Пользователь нажал "Отмена"
+                    return;
+                }
+
+                let lessonIdToEdit = null;
+                const parsedIndex = parseInt(lessonToEditInput);
+                if (!isNaN(parsedIndex) && parsedIndex >= 1 && parsedIndex <= lessonCount) {
+                    // Выбрали по номеру
+                    lessonIdToEdit = parseInt(lessonDivs[parsedIndex - 1].dataset.lessonId);
+                } else if (!isNaN(lessonToEditInput)) {
+                    // Выбрали по ID
+                    lessonIdToEdit = parseInt(lessonToEditInput);
+                }
+
+                if (lessonIdToEdit && lessonIdToEdit > 0) {
+                    openEditModal(lessonIdToEdit);
+                } else {
+                    alert("Неверный выбор урока для редактирования.");
+                }
+            } else if (parsedChoice === 2) {
+                // Открыть окно для создания нового урока в этом слоте
+                openEditModal(null, day, lessonNumber, classId);
+            } else {
+                // Введено число, отличное от 1 или 2
+                addChatMessage("Ошибка: Введите число 1 или 2.", 'bot');
+            }
+        }
+        // --- ОБНОВЛЁННАЯ ФУНКЦИЯ: Форма редактирования ---
+        async function openEditModal(lessonId, day = null, lessonNumber = null, classId = null) {
+            // СБРОСИТЬ ПОДСВЕТКИ УЧИТЕЛЯ И КАБИНЕТА при открытии окна редактирования
+            if (currentHighlightedTeacherId !== null) {
+                 highlightTeacher(null);
+            }
+            if (currentHighlightedRoomId !== null) {
+                 highlightRoom(null);
+            }
+            let lesson = null;
+            if (lessonId) {
+                lesson = scheduleData.find(l => l.id === lessonId);
+                if (!lesson) return;
+            }
+            document.getElementById('edit-lesson-id').value = lessonId || '';
+            // Определяем classId для ячейки, для которой открываем окно
+            let targetClassId = null;
+            if (lesson) {
+                // Если редактируем урок, получаем classId из подгруппы урока
+                const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
+                if (subgroup) {
+                    targetClassId = subgroup.class_id;
+                }
+            } else if (classId !== null) {
+                // Если создаём урок, classId передаётся как параметр
+                targetClassId = classId;
+            }
+            if (targetClassId) {
+                // Найти все подгруппы для targetClassId
+                const allSubgroupsForClass = subgroupsList.filter(sg => sg.class_id === targetClassId);
+                // --- НОВОЕ: Установить currentClassId ---
+                currentClassId = targetClassId;
+
+                if (lesson) {
+                    // Режим редактирования
+                    // Заполнить выпадающие списки (предполагается, что они уже загружены)
+                    populateSelect('edit-subject', subjectsList, lesson.subject_id);
+                    populateSelect('edit-teacher', teachersList, lesson.teacher_id);
+                    // Заполнить подгруппы, отфильтрованные по classId
+                    populateSelect('edit-subgroup', allSubgroupsForClass, lesson.subgroup_id);
+                    populateSelect('edit-room', roomsList, lesson.room_id);
+                    // Заполнить день и урок
+                    document.getElementById('edit-day').value = lesson.day_of_week;
+                    document.getElementById('edit-slot').value = lesson.lesson_number;
+                } else {
+                    // Режим создания
+                    // Заполняем день и урок из параметров
+                    if (day !== null) {
+                        document.getElementById('edit-day').value = day;
+                    }
+                    if (lessonNumber !== null) {
+                        document.getElementById('edit-slot').value = lessonNumber;
+                    }
+                    // --- НОВОЕ: Фильтрация предметов и учителей для класса ---
+                    try {
+                        // 1. Загрузка отфильтрованных предметов для выбранного класса
+                        const classSubjectsResponse = await fetch(`/api/class_subjects/${targetClassId}`);
+                        if (!classSubjectsResponse.ok) {
+                            throw new Error(`Ошибка API для предметов класса: ${classSubjectsResponse.status}`);
+                        }
+                        const filteredSubjects = await classSubjectsResponse.json();
+                        populateSelect('edit-subject', filteredSubjects, null); // Не выбираем предмет по умолчанию
+
+                        // 2. Загрузка отфильтрованных учителей для выбранного класса
+                        const classTeachersResponse = await fetch(`/api/class_teachers/${targetClassId}`);
+                        if (!classTeachersResponse.ok) {
+                            throw new Error(`Ошибка API для учителей класса: ${classTeachersResponse.status}`);
+                        }
+                        const filteredTeachers = await classTeachersResponse.json();
+                        populateSelect('edit-teacher', filteredTeachers, null); // Не выбираем учителя по умолчанию
+
+                        // 3. Заполнить подгруппы, отфильтрованные по classId
+                        // Сначала заполняем пустым списком или списком всех подгрупп, если предмет не выбран
+                        populateSelect('edit-subgroup', allSubgroupsForClass, null);
+
+                        // 4. Заполнить кабинеты (все доступные)
+                        populateSelect('edit-room', roomsList, null);
+
+                    } catch (error) {
+                        console.error('Ошибка при загрузке отфильтрованных данных для класса:', error);
+                        addChatMessage(`Ошибка при загрузке данных для класса: ${error.message}`, 'bot');
+                        // В случае ошибки, можно заполнить списками по умолчанию
+                        populateSelect('edit-subject', subjectsList, null);
+                        populateSelect('edit-teacher', teachersList, null);
+                        populateSelect('edit-subgroup', allSubgroupsForClass, null);
+                        populateSelect('edit-room', roomsList, null);
+                    }
+                }
+            } else {
+                // Это ошибка - не удалось определить classId
+                console.error("Не удалось определить classId для открытия модального окна.");
+                addChatMessage("Ошибка: Не удалось определить класс для новой ячейки.", 'bot');
+                return; // Прерываем выполнение, если classId неизвестен
+            }
+            document.getElementById('edit-modal').style.display = 'block';
+            // --- НОВОЕ: Добавляем обработчики изменения предмета и подгруппы ---
+            setupSubjectTeacherLink(); // Устанавливаем обработчик для предмета -> учителя
+            setupSubjectSubgroupLink(); // Устанавливаем обработчик для предмета -> подгруппы
+        }
+        // --- НОВАЯ ФУНКЦИЯ: Устанавливает связь между выбором предмета и учителя ---
+        function setupSubjectTeacherLink() {
+            const subjectSelect = document.getElementById('edit-subject');
+            const teacherSelect = document.getElementById('edit-teacher');
+            subjectSelect.addEventListener('change', async (e) => { // Сделаем асинхронным
+                const selectedSubjectId = parseInt(e.target.value);
+
+                // Фильтруем учителей на основе выбранного предмета и currentClassId
+                if (!selectedSubjectId || !currentClassId) {
+                    // Если предмет или classId не выбраны, сбросить список учителей
+                    // Попробуем снова загрузить учителей для класса, без фильтрации по предмету
+                    try {
+                        const classTeachersResponse = await fetch(`/api/class_teachers/${currentClassId}`);
+                        if (!classTeachersResponse.ok) {
+                            throw new Error(`Ошибка API для учителей класса: ${classTeachersResponse.status}`);
+                        }
+                        const filteredTeachers = await classTeachersResponse.json();
+                        populateSelect('edit-teacher', filteredTeachers, null);
+                    } catch (error) {
+                        console.error('Ошибка при загрузке учителей класса:', error);
+                        populateSelect('edit-teacher', teachersList, null); // Возврат к общему списку
+                    }
+                    return;
+                }
+                // Загрузка учителей, которые могут вести *выбранный* предмет в *данном* классе
+                try {
+                    const classTeachersForSubjectResponse = await fetch(`/api/class_teachers_for_subject/${currentClassId}/${selectedSubjectId}`);
+                    if (!classTeachersForSubjectResponse.ok) {
+                        throw new Error(`Ошибка API для учителей класса по предмету: ${classTeachersForSubjectResponse.status}`);
+                    }
+                    const filteredTeachers = await classTeachersForSubjectResponse.json();
+                    populateSelect('edit-teacher', filteredTeachers, null);
+                } catch (error) {
+                    console.error('Ошибка при загрузке учителей для класса и предмета:', error);
+                    addChatMessage(`Ошибка при фильтрации учителей: ${error.message}`, 'bot');
+                    // В случае ошибки, можно заполнить списком учителей для класса (без фильтрации по предмету)
+                    try {
+                        const classTeachersResponse = await fetch(`/api/class_teachers/${currentClassId}`);
+                        if (!classTeachersResponse.ok) {
+                            throw new Error(`Ошибка API для учителей класса: ${classTeachersResponse.status}`);
+                        }
+                        const fallbackTeachers = await classTeachersResponse.json();
+                        populateSelect('edit-teacher', fallbackTeachers, null);
+                    } catch (fallbackError) {
+                        console.error('Ошибка при возврате к учителям класса:', fallbackError);
+                        populateSelect('edit-teacher', teachersList, null); // Возврат к общему списку
+                    }
+                }
+            });
+        }
+        // --- НОВАЯ ФУНКЦИЯ: Устанавливает связь между выбором предмета и подгруппы ---
+        function setupSubjectSubgroupLink() {
+            const subjectSelect = document.getElementById('edit-subject');
+            const subgroupSelect = document.getElementById('edit-subgroup');
+            subjectSelect.addEventListener('change', (e) => {
+                const selectedSubjectId = parseInt(e.target.value);
+                if (!selectedSubjectId || !currentClassId) {
+                    // Если предмет не выбран или classId неизвестен, сбросить список подгрупп
+                    const allSubgroupsForClass = subgroupsList.filter(sg => sg.class_id === currentClassId);
+                    populateSelect('edit-subgroup', allSubgroupsForClass, null);
+                    return;
+                }
+                // Найти требование по предмету и классу
+                const requirement = classSubjectRequirementsList.find(req => req.class_id === currentClassId && req.subject_id === selectedSubjectId);
+                if (requirement) {
+                    // Если есть требование, и оно больше 1, значит, вероятно, нужно использовать подгруппы
+                    // (это эвристика, в идеале было бы поле в ClassSubjectRequirement, указывающее на необходимость подгрупп)
+                    // Для простоты, если требование > 1, покажем все подгруппы
+                    // Если требование = 1, покажем "нет" или "весь класс" и подгруппы не выбирать
+                    // Или, если в классе есть подгруппы, и предмет требует > 1 часа, покажем подгруппы.
+                    // Или, если в системе уже есть уроки для разных подгрупп по этому предмету.
+                    // Упрощённый подход: если предмет в классе существует (т.е. есть ClassSubjectRequirement), и в классе есть подгруппы > 1, покажем подгруппы.
+                    // Более точный подход: проверить, есть ли в ClassSubjectRequirement или TeacherSubjectRequirement указание на то, что предмет идёт по подгруппам.
+                    // Пока реализуем упрощённо: если в классе больше 1 подгруппы, покажем все подгруппы. Если 1, покажем её или "весь класс".
+                    const allSubgroupsForClass = subgroupsList.filter(sg => sg.class_id === currentClassId); // Уже отфильтрованы по classId
+                    const hasMultipleSubgroups = allSubgroupsForClass.length > 1;
+                    if (hasMultipleSubgroups) {
+                        // Показываем все подгруппы класса
+                        populateSelect('edit-subgroup', allSubgroupsForClass, null);
+                    } else {
+                        // Показываем "нет" или "весь класс" и первую (и единственную) подгруппу как вариант "класс"
+                        // Или, если в классе только одна подгруппа, просто покажем её.
+                        // Для простоты, если подгруппа одна, просто покажем её.
+                        // Если подгрупп нет, покажем пустой список или "нет подгрупп".
+                        populateSelect('edit-subgroup', allSubgroupsForClass, null);
+                    }
+                } else {
+                    // Если требования по предмету нет, покажем все подгруппы (или "нет" как вариант)
+                    // Для простоты, если нет требования, всё равно покажем подгруппы класса.
+                    // Но можно добавить "нет" как опцию, если предмет не планируется в классе.
+                    // Пока оставим как есть - показываем подгруппы класса.
+                    const allSubgroupsForClass = subgroupsList.filter(sg => sg.class_id === currentClassId);
+                    populateSelect('edit-subgroup', allSubgroupsForClass, null);
+                }
+            });
+        }
+        // --- ОБНОВЛЁННАЯ функция populateSelect ---
+        function populateSelect(elementId, list, selectedId) {
+            const selectElement = document.getElementById(elementId);
+            selectElement.innerHTML = ''; // Очистить
+            list.forEach(item => {
+                const option = document.createElement('option');
+                option.value = item.id;
+                option.textContent = item.name;
+                if (item.id === selectedId) {
+                    option.selected = true;
+                }
+                selectElement.appendChild(option);
+            });
+            // Если список пуст, добавим одну опцию "Нет доступных"
+            if (list.length === 0) {
+                const option = document.createElement('option');
+                option.value = '';
+                option.textContent = 'Нет доступных';
+                option.disabled = true; // Сделать неактивным
+                selectElement.appendChild(option);
+            }
+        }
+        function closeEditModal() {
+            document.getElementById('edit-modal').style.display = 'none';
+        }
+        async function saveLessonChanges(e) {
+            e.preventDefault();
+            const lessonIdInput = document.getElementById('edit-lesson-id');
+            const lessonIdValue = lessonIdInput.value.trim();
+            const isCreating = lessonIdValue === '';
+            const updatedLessonData = {
+                subject_id: parseInt(document.getElementById('edit-subject').value),
+                teacher_id: parseInt(document.getElementById('edit-teacher').value),
+                subgroup_id: parseInt(document.getElementById('edit-subgroup').value), // ID подгруппы теперь всегда из отфильтрованного списка
+                room_id: parseInt(document.getElementById('edit-room').value),
+                day_of_week: parseInt(document.getElementById('edit-day').value),
+                lesson_number: parseInt(document.getElementById('edit-slot').value)
+            };
+            // Проверим, что subgroup_id выбран (если это обязательное поле)
+            if (isNaN(updatedLessonData.subgroup_id) || updatedLessonData.subgroup_id <= 0) {
+                addChatMessage("Ошибка: Не выбрана подгруппа.", 'bot');
+                return;
+            }
+            let response;
+            let successMessage;
+            let errorMessage;
+            try {
+                if (isCreating) {
+                    // Режим создания: отправляем POST на /api/lessons
+                    response = await fetch('/api/lessons', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedLessonData),
+                    });
+                    successMessage = 'Урок успешно создан';
+                    errorMessage = 'Ошибка создания урока';
+                } else {
+                    // Режим редактирования: отправляем PUT на /api/lessons/{id}
+                    const lessonId = parseInt(lessonIdValue);
+                    if (isNaN(lessonId)) {
+                         throw new Error("ID урока не является числом.");
+                    }
+                    response = await fetch(`/api/lessons/${lessonId}`, {
+                        method: 'PUT',
+                        headers: {
+                            'Content-Type': 'application/json',
+                        },
+                        body: JSON.stringify(updatedLessonData),
+                    });
+                    successMessage = 'Урок успешно обновлён';
+                    errorMessage = 'Ошибка обновления урока';
+                }
+                if (response.ok) {
+                    const result = await response.json();
+                    addChatMessage(result.message, 'bot');
+                    closeEditModal();
+                    // Перезагрузить данные или обновить локально
+                    loadScheduleData(currentShift); // Перезагружаем для выбранной смены
+                } else {
+                    const errorResult = await response.json();
+                    addChatMessage(`Ошибка: ${errorResult.error || 'Неизвестная ошибка'}`, 'bot');
+                }
+            } catch (error) {
+                console.error(`Ошибка при ${isCreating ? 'создании' : 'обновлении'} урока:`, error);
+                addChatMessage(`Ошибка: ${error.message}`, 'bot');
+            }
+        }
+        // --- Загрузка файлов ---
+        async function handleFileUpload() {
+            const fileHoursInput = document.getElementById('file-hours');
+            const fileTeachersInput = document.getElementById('file-teachers');
+            const statusDiv = document.getElementById('upload-status');
+            const fileHours = fileHoursInput.files[0];
+            const fileTeachers = fileTeachersInput.files[0];
+            if (!fileHours || !fileTeachers) {
+                statusDiv.textContent = 'Пожалуйста, выберите оба файла.';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            // Простая проверка типа файла (опционально)
+            if (!fileHours.name.endsWith('.xlsx') && !fileHours.name.endsWith('.xls')) {
+                statusDiv.textContent = 'Файл часов должен быть .xlsx или .xls';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            if (!fileTeachers.name.endsWith('.xlsx') && !fileTeachers.name.endsWith('.xls')) {
+                statusDiv.textContent = 'Файл нагрузки должен быть .xlsx или .xls';
+                statusDiv.style.color = 'red';
+                return;
+            }
+            statusDiv.textContent = 'Загрузка...';
+            statusDiv.style.color = 'orange';
+            const formData = new FormData();
+            formData.append('file_hours', fileHours);
+            formData.append('file_teachers', fileTeachers);
+            try {
+                const response = await fetch('/upload_data', {
+                    method: 'POST',
+                    body: formData, // Используем FormData для отправки файлов
+                });
+                const result = await response.json();
+                if (response.ok) {
+                    statusDiv.textContent = result.message;
+                    statusDiv.style.color = 'green';
+                    // Возможно, стоит перезагрузить список классов/уроков, если это влияет на отображение
+                    // loadShifts(); // Если смены/классы могли измениться
+                    if (currentShift) {
+                        loadScheduleData(currentShift); // Перезагружаем расписание для текущей смены
+                    }
+                } else {
+                    statusDiv.textContent = `Ошибка: ${result.error}`;
+                    statusDiv.style.color = 'red';
+                }
+            } catch (error) {
+                console.error('Ошибка при отправке команды боту:', error);
+                statusDiv.textContent = `Ошибка сети: ${error.message}`, 'bot';
+                statusDiv.style.color = 'red';
+            }
+        }
+        function addChatMessage(text, sender) {
+            const messagesContainer = document.getElementById('chat-messages');
+            const messageElement = document.createElement('div');
+            messageElement.classList.add('message', `${sender}-message`);
+            messageElement.textContent = text;
+            messagesContainer.appendChild(messageElement);
+            messagesContainer.scrollTop = messagesContainer.scrollHeight; // Прокрутка вниз
+        }
+        // --- Чат-бот ---
+        async function sendCommandToBot() {
+            const inputElement = document.getElementById('chat-input');
+            const command = inputElement.value.trim();
+            if (!command) return;
+            addChatMessage(command, 'user');
+            inputElement.value = '';
+            // Пример обработки команды, зависящей от смены
+            // Пока просто передаём как есть, но логика ИИ может учитывать смену
+            // В заглушке мы этого не моделируем, но бэкенд может
+            try {
+                const response = await fetch('/api/ai_command', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ command: command }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    // Показать ответ ИИ
+                    let botResponse = `Команда обработана. Действие: ${data.action}.`;
+                    if (data.action === 'found_replacements') {
+                        botResponse = `Найдены возможные замены для урока ${data.lesson_id}:`;
+                        data.possible_replacements.forEach(rep => {
+                            botResponse += `- ${rep.teacher_name} (ID: ${rep.teacher_id})`;
+                        });
+                    } else if (data.action === 'lesson_moved') {
+                        botResponse = data.details.message;
+                    } else if (data.action === 'suggested_slots') {
+                        botResponse = "Найдены свободные слоты:";
+                        data.details.slots.forEach(slot => {
+                            botResponse += `- День: ${getDayName(slot.day)}, Урок: ${slot.slot}, Учитель ID: ${slot.teacher_id}, Кабинет ID: ${slot.room_id}`;
+                        });
+                    } else if (data.details && data.details.error_message) {
+                        botResponse = `Ошибка ИИ: ${data.details.error_message}`;
+                    } else if (data.details && data.details.message) {
+                         botResponse = data.details.message;
+                    }
+                    addChatMessage(botResponse, 'bot');
+                    // Если действие ИИ повлияло на расписание, возможно, стоит перезагрузить его
+                    if (['lesson_moved', 'lesson_added', 'lesson_removed'].includes(data.action)) {
+                        loadScheduleData(currentShift); // Перезагружаем для выбранной смены
+                    }
+                } else {
+                    addChatMessage(`Ошибка от бота: ${data.error || 'Неизвестная ошибка'}`, 'bot');
+                }
+            } catch (error) {
+                console.error('Ошибка при отправке команды боту:', error);
+                addChatMessage(`Ошибка связи с ботом: ${error.message}`, 'bot');
+            }
+        }
+        // --- Функции экспорта и очистки ---
+        async function handleExport() {
+            if (!currentShift) {
+                addChatMessage("Выберите смену для экспорта.", 'bot');
+                return;
+            }
+            try {
+                // Используем window.location.href для скачивания файла
+                window.location.href = `/export_schedule?shift=${currentShift}`;
+                addChatMessage("Файл экспортируется (список)...", 'bot');
+            } catch (error) {
+                console.error('Ошибка при экспорте:', error);
+                addChatMessage(`Ошибка экспорта: ${error.message}`, 'bot');
+            }
+        }
+        // --- НОВАЯ ФУНКЦИЯ ---
+        async function handleExportFormatted() {
+            if (!currentShift) {
+                addChatMessage("Выберите смену для экспорта.", 'bot');
+                return;
+            }
+            try {
+                // Используем window.location.href для скачивания файла
+                window.location.href = `/export_schedule_formatted?shift=${currentShift}`;
+                addChatMessage("Файл экспортируется (таблица)...", 'bot');
+            } catch (error) {
+                console.error('Ошибка при форматированном экспорте:', error);
+                addChatMessage(`Ошибка форматированного экспорта: ${error.message}`, 'bot');
+            }
+        }
+        async function handleClearSchedule() {
+            if (!currentShift) {
+                addChatMessage("Выберите смену для очистки.", 'bot');
+                return;
+            }
+            const confirmation = confirm(`Вы уверены, что хотите удалить все уроки для смены ${currentShift}?`);
+            if (!confirmation) {
+                return;
+            }
+            try {
+                const response = await fetch('/clear_schedule', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ shift_id: currentShift }),
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    addChatMessage(data.message, 'bot');
+                    loadScheduleData(currentShift); // Перезагружаем расписание для текущей смены
+                } else {
+                    addChatMessage(`Ошибка: ${data.error}`, 'bot');
+                }
+            } catch (error) {
+                console.error('Ошибка при очистке расписания:', error);
+                addChatMessage(`Ошибка связи: ${error.message}`, 'bot');
+            }
+        }
+        async function handleClearDatabase() {
+            const confirmation = confirm("Вы уверены, что хотите удалить ВСЕ данные из базы данных? Это действие необратимо.");
+            if (!confirmation) {
+                return;
+            }
+            try {
+                const response = await fetch('/clear_database', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                });
+                const data = await response.json();
+                if (response.ok) {
+                    addChatMessage(data.message, 'bot');
+                    // После очистки БД, обновим интерфейс
+                    scheduleData = [];
+                    teachersList = [];
+                    subjectsList = [];
+                    classesList = [];
+                    subgroupsList = [];
+                    roomsList = [];
+                    renderSchedule(); // Очистит таблицу
+                    document.getElementById('shift-selector').value = ''; // Сбросим выбор смены
+                    currentShift = null;
+                } else {
+                    addChatMessage(`Ошибка: ${data.error}`, 'bot');
+                }
+            } catch (error) {
+                console.error('Ошибка при очистке БД:', error);
+                addChatMessage(`Ошибка связи: ${error.message}`, 'bot');
+            }
+        }
+        // --- Инициализация ---
+        document.addEventListener('DOMContentLoaded', () => {
+            loadShifts(); // Сначала загружаем список смен
+        });
+    </script>
+</body>
+</html>
