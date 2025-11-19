@@ -105,54 +105,7 @@
             </form>
         </div>
     </div>
-    <!-- НОВОЕ: Модальное окно для управления временными изменениями -->
-    <div id="temp-change-modal">
-        <div class="modal-content">
-            <h3>Управление временным изменением</h3>
-            <form id="temp-change-form">
-                <input type="hidden" id="temp-change-lesson-id">
-                <input type="hidden" id="temp-change-date">
-                <label for="temp-change-type">Тип изменения:</label>
-                <select id="temp-change-type" required>
-                    <option value="substitution">Замена учителя</option>
-                    <option value="movement">Перенос урока</option>
-                    <option value="cancellation">Отмена урока</option>
-                </select>
-                <div id="substitution-fields" style="display: none;">
-                    <label for="temp-change-new-teacher">Новый учитель:</label>
-                    <select id="temp-change-new-teacher"></select>
-                </div>
-                <div id="movement-fields" style="display: none;">
-                    <label for="temp-change-new-day">Новый день:</label>
-                    <select id="temp-change-new-day">
-                        <option value="0">Понедельник</option>
-                        <option value="1">Вторник</option>
-                        <option value="2">Среда</option>
-                        <option value="3">Четверг</option>
-                        <option value="4">Пятница</option>
-                    </select>
-                    <label for="temp-change-new-slot">Новый номер урока:</label>
-                    <select id="temp-change-new-slot">
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                    </select>
-                    <label for="temp-change-new-room">Новый кабинет:</label>
-                    <select id="temp-change-new-room"></select>
-                </div>
-                <label for="temp-change-reason">Причина:</label>
-                <input type="text" id="temp-change-reason" />
-                <div class="modal-buttons">
-                    <button type="button" id="cancel-temp-change">Отмена</button>
-                    <button type="button" id="delete-temp-change" style="background-color: #dc3545;">Удалить изменение</button>
-                    <button type="submit" id="save-temp-change">Сохранить изменение</button>
-                </div>
-            </form>
-        </div>
-    </div>
+
     <script>
         // --- Глобальные переменные ---
         let scheduleData = []; // Базовое расписание для дня недели
@@ -547,12 +500,12 @@
                     const lessonDetailsDivs = clickedLessonCell.querySelectorAll('.lesson-details');
                     if (lessonDetailsDivs.length > 0) {
                         // --- НОВОЕ: Если есть уроки, показываем диалог ---
-                        // Если выбрана дата, показываем диалог для управления временным изменением
+                        // Если выбрана дата, показываем диалог для редактирования урока
                         if (date) {
+                            // При наличии даты также открываем обычное окно редактирования
                             const lessonDiv = lessonDetailsDivs[0]; // Берём первый урок в слоте для примера
-                            const lessonId = parseInt(lessonDiv.dataset.originalLessonId); // Используем originalLessonId
-                            const lessonDate = lessonDiv.dataset.date;
-                            openTempChangeModal(lessonId, lessonDate);
+                            const lessonId = parseInt(lessonDiv.dataset.lessonId); // Используем lessonId для редактирования
+                            openEditModal(lessonId, day, lessonNumber, classId);
                         } else {
                             // Если дата не выбрана, показываем старый диалог
                             showLessonOptionsDialog(clickedLessonCell, lessonDetailsDivs, day, lessonNumber, classId);
@@ -560,9 +513,11 @@
                     } else {
                         // Если div нет, значит ячейка пуста.
                         // Если выбрана дата, можно предложить создать временный урок (например, отменить или добавить).
-                        // Для простоты, пока не будем создавать уроки на пустые слоты с датой.
+                        // Теперь разрешаем создание уроков на пустые слоты с датой.
                         if (date) {
-                            addChatMessage("Нельзя создать урок на пустой слот с датой. Только через изменение существующего урока.", 'bot');
+                            // Если дата выбрана, открываем окно создания урока на пустой слот
+                            console.log("Клик на пустую ячейку с датой:", "День:", day, "Урок:", lessonNumber, "Класс:", classId, "Дата:", date);
+                            openEditModal(null, day, lessonNumber, classId);
                         } else {
                             // Если дата не выбрана, открываем окно создания.
                             console.log("Клик на пустую ячейку:", "День:", day, "Урок:", lessonNumber, "Класс:", classId);

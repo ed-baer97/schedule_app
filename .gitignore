@@ -1,3 +1,4 @@
-/generate_test_data.py
-/Учителя_Кабинеты_Предметы_Классы.xlsx
-/Часы_Класс_Предмет.xlsx
+```
+# Backup files
+*.backup
+```
