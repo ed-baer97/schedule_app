@@ -132,6 +132,30 @@
             </div>
         </div>
     </div>
+    
+    <!-- Модальное окно для управления уроком (изменение учителя/предмета) -->
+    <div id="manageLessonModal" class="modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3>Управление уроком</h3>
+                <span class="close" onclick="closeModals()">&times;</span>
+            </div>
+            <div class="modal-body">
+                <div class="lesson-info">
+                    <p><strong>Предмет:</strong> <span id="manage-subject-name"></span></p>
+                    <p><strong>Учитель:</strong> <span id="manage-teacher-name"></span></p>
+                    <p><strong>Класс:</strong> <span id="manage-class-name"></span></p>
+                    <p><strong>День:</strong> <span id="manage-day-name"></span></p>
+                    <p><strong>Урок:</strong> <span id="manage-lesson-slot"></span></p>
+                </div>
+                <div class="modal-buttons">
+                    <button type="button" onclick="changeTeacherForLesson()">Сменить учителя</button>
+                    <button type="button" onclick="changeSubjectForLesson()">Сменить предмет</button>
+                    <button type="button" onclick="closeModals()">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
 
     <script>
         // --- Глобальные переменные ---
@@ -1600,17 +1624,61 @@
                             <span class="subgroup">${lesson.subgroup_name || 'Все'}</span>
                         </div>
                         <div class="lesson-actions">
-                            <button onclick="openLessonModal(${lesson.id})" class="edit-lesson-btn">Редактировать</button>
+                            <button onclick="openManageLessonModal(${lesson.id})" class="edit-lesson-btn">Управление</button>
                             <button onclick="deleteLesson(${lesson.id})" class="delete-lesson-btn">Удалить</button>
                         </div>
                     `;
                     lessonsList.appendChild(lessonDiv);
                 });
+                
+                // Добавляем кнопку "Добавить подгруппу" под списком уроков
+                const addSubgroupDiv = document.createElement('div');
+                addSubgroupDiv.className = 'modal-buttons';
+                addSubgroupDiv.innerHTML = `
+                    <button type="button" onclick="addSubgroup()">Добавить подгруппу</button>
+                    <button type="button" onclick="closeModals()">Закрыть</button>
+                `;
+                lessonsList.parentNode.appendChild(addSubgroupDiv);
             } else {
                 lessonsList.innerHTML = '<p>В этой ячейке нет уроков</p>';
+                // Добавляем кнопки при отсутствии уроков
+                const addSubgroupDiv = document.createElement('div');
+                addSubgroupDiv.className = 'modal-buttons';
+                addSubgroupDiv.innerHTML = `
+                    <button type="button" onclick="addSubgroup()">Добавить подгруппу</button>
+                    <button type="button" onclick="closeModals()">Закрыть</button>
+                `;
+                lessonsList.parentNode.appendChild(addSubgroupDiv);
             }
         }
 
+        // Модальное окно для управления уроком (изменение учителя/предмета)
+        function openManageLessonModal(lessonId) {
+            // Находим урок по ID
+            const allLessons = [...scheduleData, ...temporaryChangesData.map(change => ({
+                ...change,
+                is_temporary: true
+            }))];
+            
+            const lesson = allLessons.find(l => l.id == lessonId);
+            if (!lesson) return;
+            
+            // Находим информацию о классе
+            const classInfo = classesList.find(cls => cls.id == lesson.class_id);
+            const className = classInfo ? classInfo.name : 'Неизвестный класс';
+            
+            // Заполняем информацию в модальном окне
+            document.getElementById('manageLessonModal').style.display = 'block';
+            document.getElementById('manage-subject-name').textContent = lesson.subject_name || 'Неизвестный предмет';
+            document.getElementById('manage-teacher-name').textContent = lesson.teacher_name || 'Неизвестный учитель';
+            document.getElementById('manage-class-name').textContent = className;
+            document.getElementById('manage-day-name').textContent = getDayNameFull(lesson.day_of_week);
+            document.getElementById('manage-lesson-slot').textContent = lesson.lesson_slot;
+            
+            // Сохраняем ID урока для последующих действий
+            window.currentLessonId = lesson.id;
+        }
+        
         // Модальное окно для конкретного урока
         function openLessonModal(lessonId) {
             // Находим урок по ID
@@ -1642,6 +1710,7 @@
         function closeModals() {
             document.getElementById('cellModal').style.display = 'none';
             document.getElementById('lessonModal').style.display = 'none';
+            document.getElementById('manageLessonModal').style.display = 'none';
         }
 
         // Редактирование урока
@@ -1813,18 +1882,184 @@
             }
         }
 
+        // Функция для изменения учителя из модального окна управления уроком
+        async function changeTeacherForLesson() {
+            if (!window.currentLessonId) return;
+            
+            // Получаем список учителей для выбора
+            let teacherOptions = '';
+            teachersList.forEach(teacher => {
+                teacherOptions += `<option value="${teacher.id}">${teacher.name}</option>`;
+            });
+            
+            // Создаем HTML для диалога выбора учителя
+            const dialogHTML = `
+                <div id="teacher-select-dialog" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+                    <div style="background: white; padding: 20px; border-radius: 8px; width: 400px; max-width: 90%;">
+                        <h3>Выберите нового учителя</h3>
+                        <select id="new-teacher-select" style="width: 100%; padding: 8px; margin: 10px 0;">
+                            <option value="">-- Выберите учителя --</option>
+                            ${teacherOptions}
+                        </select>
+                        <div style="text-align: right; margin-top: 15px;">
+                            <button onclick="confirmTeacherChange()" style="padding: 8px 16px; margin-right: 10px;">Изменить</button>
+                            <button onclick="closeTeacherSelectDialog()" style="padding: 8px 16px;">Отмена</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Добавляем диалог в DOM
+            document.body.insertAdjacentHTML('beforeend', dialogHTML);
+        }
+
+        // Подтверждение изменения учителя
+        async function confirmTeacherChange() {
+            const newTeacherId = document.getElementById('new-teacher-select').value;
+            if (!newTeacherId) {
+                alert('Пожалуйста, выберите учителя');
+                return;
+            }
+            
+            if (!window.currentLessonId) return;
+            
+            try {
+                const response = await fetch(`/api/lessons/${window.currentLessonId}/teacher`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        teacher_id: parseInt(newTeacherId)
+                    })
+                });
+                
+                if (response.ok) {
+                    addChatMessage('Учитель успешно изменен', 'bot');
+                    closeModals();
+                    closeTeacherSelectDialog();
+                    // Перезагружаем расписание
+                    if (selectedDate && currentShift) {
+                        loadScheduleDataForDate(selectedDate, currentShift);
+                    } else if (currentShift) {
+                        loadScheduleData(currentShift);
+                    }
+                } else {
+                    const errorData = await response.json();
+                    addChatMessage(`Ошибка изменения учителя: ${errorData.message || 'Неизвестная ошибка'}`, 'bot');
+                    closeTeacherSelectDialog();
+                }
+            } catch (error) {
+                addChatMessage(`Ошибка изменения учителя: ${error.message}`, 'bot');
+                closeTeacherSelectDialog();
+            }
+        }
+
+        // Функция для изменения предмета из модального окна управления уроком
+        async function changeSubjectForLesson() {
+            if (!window.currentLessonId) return;
+            
+            // Получаем список предметов для выбора
+            let subjectOptions = '';
+            subjectsList.forEach(subject => {
+                subjectOptions += `<option value="${subject.id}">${subject.name}</option>`;
+            });
+            
+            // Создаем HTML для диалога выбора предмета
+            const dialogHTML = `
+                <div id="subject-select-dialog" style="position: fixed; top: 0; left: 0; width: 100%; height: 100%; background-color: rgba(0,0,0,0.5); z-index: 10000; display: flex; align-items: center; justify-content: center;">
+                    <div style="background: white; padding: 20px; border-radius: 8px; width: 400px; max-width: 90%;">
+                        <h3>Выберите новый предмет</h3>
+                        <select id="new-subject-select" style="width: 100%; padding: 8px; margin: 10px 0;">
+                            <option value="">-- Выберите предмет --</option>
+                            ${subjectOptions}
+                        </select>
+                        <div style="text-align: right; margin-top: 15px;">
+                            <button onclick="confirmSubjectChange()" style="padding: 8px 16px; margin-right: 10px;">Изменить</button>
+                            <button onclick="closeSubjectSelectDialog()" style="padding: 8px 16px;">Отмена</button>
+                        </div>
+                    </div>
+                </div>
+            `;
+            
+            // Добавляем диалог в DOM
+            document.body.insertAdjacentHTML('beforeend', dialogHTML);
+        }
+
+        // Подтверждение изменения предмета
+        async function confirmSubjectChange() {
+            const newSubjectId = document.getElementById('new-subject-select').value;
+            if (!newSubjectId) {
+                alert('Пожалуйста, выберите предмет');
+                return;
+            }
+            
+            if (!window.currentLessonId) return;
+            
+            try {
+                const response = await fetch(`/api/lessons/${window.currentLessonId}/subject`, {
+                    method: 'PUT',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({
+                        subject_id: parseInt(newSubjectId)
+                    })
+                });
+                
+                if (response.ok) {
+                    addChatMessage('Предмет успешно изменен', 'bot');
+                    closeModals();
+                    closeSubjectSelectDialog();
+                    // Перезагружаем расписание
+                    if (selectedDate && currentShift) {
+                        loadScheduleDataForDate(selectedDate, currentShift);
+                    } else if (currentShift) {
+                        loadScheduleData(currentShift);
+                    }
+                } else {
+                    const errorData = await response.json();
+                    addChatMessage(`Ошибка изменения предмета: ${errorData.message || 'Неизвестная ошибка'}`, 'bot');
+                    closeSubjectSelectDialog();
+                }
+            } catch (error) {
+                addChatMessage(`Ошибка изменения предмета: ${error.message}`, 'bot');
+                closeSubjectSelectDialog();
+            }
+        }
+
+        // Закрытие диалога выбора учителя
+        function closeTeacherSelectDialog() {
+            const dialog = document.getElementById('teacher-select-dialog');
+            if (dialog) {
+                dialog.remove();
+            }
+        }
+
+        // Закрытие диалога выбора предмета
+        function closeSubjectSelectDialog() {
+            const dialog = document.getElementById('subject-select-dialog');
+            if (dialog) {
+                dialog.remove();
+            }
+        }
+
         // Добавляем обработчики событий для модальных окон
         document.addEventListener('DOMContentLoaded', function() {
             // Закрытие модальных окон при клике вне их области
             window.onclick = function(event) {
                 const cellModal = document.getElementById('cellModal');
                 const lessonModal = document.getElementById('lessonModal');
+                const manageLessonModal = document.getElementById('manageLessonModal');
                 
                 if (event.target === cellModal) {
                     cellModal.style.display = 'none';
                 }
                 if (event.target === lessonModal) {
                     lessonModal.style.display = 'none';
+                }
+                if (event.target === manageLessonModal) {
+                    manageLessonModal.style.display = 'none';
                 }
             };
             
