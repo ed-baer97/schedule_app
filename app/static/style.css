@@ -384,3 +384,154 @@
         .highlighted-room {
             background-color: #ffccff !important; /* Розовый фон для подсветки кабинета */
         }
+        /* Стили для новых модальных окон */
+        .modal {
+            display: none; /* Скрыто по умолчанию */
+            position: fixed;
+            z-index: 1000;
+            left: 0;
+            top: 0;
+            width: 100%;
+            height: 100%;
+            overflow: auto;
+            background-color: rgba(0,0,0,0.5); /* Полупрозрачный фон */
+        }
+
+        .modal-content {
+            background-color: white;
+            margin: 5% auto;
+            padding: 0;
+            border: 1px solid #888;
+            width: 90%;
+            max-width: 600px;
+            border-radius: 8px;
+            max-height: 90vh;
+            overflow-y: auto;
+            box-sizing: border-box;
+            display: flex;
+            flex-direction: column;
+        }
+
+        .modal-header {
+            padding: 15px;
+            border-bottom: 1px solid #eee;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            background-color: #f8f9fa;
+            border-radius: 8px 8px 0 0;
+        }
+
+        .modal-header h3 {
+            margin: 0;
+            color: #333;
+        }
+
+        .close {
+            color: #aaa;
+            font-size: 28px;
+            font-weight: bold;
+            cursor: pointer;
+            line-height: 1;
+        }
+
+        .close:hover,
+        .close:focus {
+            color: #000;
+        }
+
+        .modal-body {
+            padding: 20px;
+            flex: 1;
+            overflow-y: auto;
+        }
+
+        .cell-info {
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .cell-info p {
+            margin: 5px 0;
+        }
+
+        .cell-lesson-item {
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            padding: 10px;
+            margin-bottom: 10px;
+            background-color: #f9f9f9;
+        }
+
+        .lesson-info {
+            margin-bottom: 8px;
+        }
+
+        .lesson-info .subject {
+            font-weight: bold;
+            display: block;
+        }
+
+        .lesson-info .teacher {
+            color: #0066cc;
+            display: block;
+        }
+
+        .lesson-info .room {
+            font-style: italic;
+            display: block;
+        }
+
+        .lesson-info .subgroup {
+            color: #666;
+            font-size: 0.9em;
+            display: block;
+        }
+
+        .lesson-actions {
+            margin-top: 8px;
+            text-align: right;
+        }
+
+        .lesson-actions button {
+            margin-left: 5px;
+            padding: 4px 8px;
+            font-size: 0.9em;
+        }
+
+        .edit-lesson-btn {
+            background-color: #007bff;
+            color: white;
+        }
+
+        .delete-lesson-btn {
+            background-color: #dc3545;
+            color: white;
+        }
+
+        .modal-buttons {
+            margin-top: 20px;
+            text-align: right;
+        }
+
+        .modal-buttons button {
+            margin-left: 10px;
+            padding: 8px 16px;
+        }
+
+        .modal-content label {
+            display: block;
+            margin-top: 10px;
+            font-weight: bold;
+        }
+
+        .modal-content input,
+        .modal-content select {
+            width: 100%;
+            padding: 8px;
+            margin-top: 5px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            box-sizing: border-box;
+        }
