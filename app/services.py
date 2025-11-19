@@ -1,5 +1,6 @@
 # app/services.py
-from .models import db, Lesson, Teacher, Room, SubGroup, ClassSubjectRequirement, TeacherSubjectRequirement, Class, Subject # Добавлены Class, Subject
+from .models import db, Lesson, Teacher, Room, SubGroup, ClassSubjectRequirement, TeacherSubjectRequirement, Class, Subject, TemporaryChange, ChangeType # Добавлены Class, Subject, TemporaryChange, ChangeType
+from datetime import date # Для работы с датами
 
 def check_teacher_conflict(teacher_id, day, lesson_number, exclude_lesson_id=None):
     """
@@ -222,6 +223,91 @@ def get_teachers_for_class_and_subject(class_id, subject_id):
     print(f"DEBUG: Возвращаем учителей: {[t.name for t in teachers]}") # Отладочный вывод
     return teachers
 
+# --- НОВЫЕ ФУНКЦИИ ДЛЯ ВРЕМЕННЫХ ИЗМЕНЕНИЙ ---
+def add_temporary_change(original_lesson_id, date, change_type, new_teacher_id=None, new_day_of_week=None, new_lesson_number=None, new_room_id=None, reason=None):
+    """
+    Добавляет временное изменение в расписание.
+    original_lesson_id: ID оригинального урока.
+    date: Дата, к которой применяется изменение.
+    change_type: Тип изменения (ChangeType.SUBSTITUTION, MOVEMENT, CANCELLATION).
+    new_*: Новые значения для замены/переноса. Для CANCELLATION могут быть None.
+    reason: Причина изменения.
+    Возвращает (success, message).
+    """
+    original_lesson = Lesson.query.get(original_lesson_id)
+    if not original_lesson:
+        return False, f"Оригинальный урок с ID {original_lesson_id} не найден."
+
+    # Создаём запись об изменении
+    change = TemporaryChange(
+        original_lesson_id=original_lesson_id,
+        date=date,
+        change_type=change_type,
+        new_teacher_id=new_teacher_id,
+        new_day_of_week=new_day_of_week,
+        new_lesson_number=new_lesson_number,
+        new_room_id=new_room_id,
+        reason=reason,
+        original_teacher_id=original_lesson.teacher_id,
+        original_room_id=original_lesson.room_id
+    )
+
+    # ВАЖНО: Проверим конфликты для типа SUBSTITUTION или MOVEMENT
+    if change_type in [ChangeType.SUBSTITUTION, ChangeType.MOVEMENT]:
+        day_to_check = new_day_of_week if new_day_of_week is not None else original_lesson.day_of_week
+        lesson_number_to_check = new_lesson_number if new_lesson_number is not None else original_lesson.lesson_number
+        teacher_id_to_check = new_teacher_id if new_teacher_id is not None else original_lesson.teacher_id
+        room_id_to_check = new_room_id if new_room_id is not None else original_lesson.room_id
+
+        # Проверим конфликт учителя (для новой даты)
+        if check_teacher_conflict(teacher_id_to_check, day_to_check, lesson_number_to_check):
+             return False, f"Новый учитель ID {teacher_id_to_check} уже занят в этот слот ({get_day_name(day_to_check)}, урок {lesson_number_to_check}) на дату {date}."
+
+        # Проверим конфликт кабинета (для новой даты)
+        if check_room_conflict(room_id_to_check, day_to_check, lesson_number_to_check):
+             return False, f"Новый кабинет ID {room_id_to_check} уже занят в этот слот ({get_day_name(day_to_check)}, урок {lesson_number_to_check}) на дату {date}."
+
+        # Проверим конфликт подгруппы (для новой даты)
+        if check_subgroup_conflict(original_lesson.subgroup_id, day_to_check, lesson_number_to_check):
+             return False, f"Подгруппа ID {original_lesson.subgroup_id} уже занята в этот слот ({get_day_name(day_to_check)}, урок {lesson_number_to_check}) на дату {date}."
+
+    db.session.add(change)
+    db.session.commit()
+    return True, f"Временное изменение ({change_type.value}) успешно добавлено для урока {original_lesson_id} на дату {date}."
+
+def remove_temporary_change(change_id):
+    """
+    Удаляет временное изменение.
+    change_id: ID записи TemporaryChange.
+    Возвращает (success, message).
+    """
+    change = TemporaryChange.query.get(change_id)
+    if not change:
+        return False, f"Изменение с ID {change_id} не найдено."
+
+    db.session.delete(change)
+    db.session.commit()
+    return True, f"Временное изменение с ID {change_id} успешно удалено."
+
+def get_temporary_changes_for_date(date):
+    """
+    Возвращает список всех временных изменений на указанную дату.
+    date: Дата (объект datetime.date).
+    Возвращает список объектов TemporaryChange.
+    """
+    changes = TemporaryChange.query.filter_by(date=date).all()
+    return changes
+
+def get_temporary_changes_for_lesson_and_date(lesson_id, date):
+    """
+    Возвращает список временных изменений для конкретного урока на конкретную дату.
+    lesson_id: ID урока.
+    date: Дата (объект datetime.date).
+    Возвращает список объектов TemporaryChange.
+    """
+    changes = TemporaryChange.query.filter_by(original_lesson_id=lesson_id, date=date).all()
+    return changes
+
 # Пример функции для добавления урока с проверкой
 def add_lesson(lesson_data):
     is_valid, errors = validate_lesson(lesson_data)
@@ -267,3 +353,9 @@ def remove_lesson(lesson_id):
     db.session.delete(lesson_to_remove)
     db.session.commit()
     return True, "Урок успешно удалён"
+
+# --- Вспомогательная функция для получения названия дня ---
+def get_day_name(day_index):
+    """Вспомогательная функция для преобразования индекса дня в строку."""
+    days = ['Пн', 'Вт', 'Ср', 'Чт', 'Пт']
+    return days[day_index] if 0 <= day_index < len(days) else 'N/A'

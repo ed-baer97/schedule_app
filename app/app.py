@@ -1,12 +1,13 @@
 # app/app.py
 from flask import Flask, request, jsonify, render_template # Добавлен render_template
-from .models import db, Teacher, Subject, Class, SubGroup, Room, Lesson, ClassSubjectRequirement, TeacherSubjectRequirement, TeacherSubject, Replacement, Shift # Добавлен Replacement
+from .models import db, Teacher, Subject, Class, SubGroup, Room, Lesson, ClassSubjectRequirement, TeacherSubjectRequirement, TeacherSubject, Replacement, Shift, TemporaryChange, ChangeType # Добавлен Replacement, TemporaryChange, ChangeType
 # app/app.py
 # ... (другие импорты) ...
-from .services import add_lesson, update_lesson, remove_lesson, validate_lesson, check_teacher_conflict, check_room_conflict, check_subgroup_conflict, get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject # Добавлены get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject
+from .services import add_lesson, update_lesson, remove_lesson, validate_lesson, check_teacher_conflict, check_room_conflict, check_subgroup_conflict, get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject, add_temporary_change, remove_temporary_change, get_temporary_changes_for_date, get_temporary_changes_for_lesson_and_date # Добавлены get_subjects_for_class, get_teachers_for_class, get_teachers_for_class_and_subject, add_temporary_change, remove_temporary_change, get_temporary_changes_for_date, get_temporary_changes_for_lesson_and_date
 # ... (остальные импорты и код)...
 from .ai_assistant import handle_command_via_api # Импортируем заглушку
 import os
+from datetime import datetime # Для парсинга даты
 # --- НОВОЕ: Импорты для загрузки файлов ---
 from werkzeug.utils import secure_filename
 import pandas as pd
@@ -381,6 +382,7 @@ def create_app():
         try:
             # Важно: порядок удаления важен из-за внешних ключей
             # Удаляем сначала дочерние таблицы
+            TemporaryChange.query.delete() # <-- Удаляем сначала временные изменения
             Lesson.query.delete()
             ClassSubjectRequirement.query.delete()
             TeacherSubjectRequirement.query.delete()
@@ -436,6 +438,106 @@ def create_app():
             "subject_id": req.subject_id,
             "weekly_hours": req.weekly_hours
         } for req in requirements])
+
+    # --- API для получения временных изменений ---
+    @app.route('/api/temporary_changes', methods=['GET'])
+    def get_temporary_changes():
+        date_str = request.args.get('date') # Ожидаем дату в формате YYYY-MM-DD
+        if not date_str:
+            return jsonify({"error": "Не указана дата."}), 400
+
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Неверный формат даты. Используйте YYYY-MM-DD."}), 400
+
+        changes = get_temporary_changes_for_date(date_obj)
+        result = []
+        for change in changes:
+            # Найдем имена для отображения
+            original_lesson = Lesson.query.get(change.original_lesson_id)
+            original_teacher = Teacher.query.get(change.original_teacher_id)
+            original_room = Room.query.get(change.original_room_id)
+            new_teacher = Teacher.query.get(change.new_teacher_id) if change.new_teacher_id else None
+            new_room = Room.query.get(change.new_room_id) if change.new_room_id else None
+
+            result.append({
+                "id": change.id,
+                "original_lesson_id": change.original_lesson_id,
+                "date": change.date.isoformat(), # Преобразуем дату в строку
+                "change_type": change.change_type.value,
+                "new_teacher_id": change.new_teacher_id,
+                "new_teacher_name": new_teacher.name if new_teacher else "N/A",
+                "new_day_of_week": change.new_day_of_week,
+                "new_lesson_number": change.new_lesson_number,
+                "new_room_id": change.new_room_id,
+                "new_room_name": new_room.name if new_room else "N/A",
+                "reason": change.reason,
+                "original_teacher_id": change.original_teacher_id,
+                "original_teacher_name": original_teacher.name if original_teacher else "N/A",
+                "original_room_id": change.original_room_id,
+                "original_room_name": original_room.name if original_room else "N/A"
+            })
+        return jsonify(result)
+
+    # --- API для добавления временного изменения ---
+    @app.route('/api/temporary_changes', methods=['POST'])
+    def create_temporary_change():
+        data = request.get_json()
+        original_lesson_id = data.get('original_lesson_id')
+        date_str = data.get('date')
+        change_type_str = data.get('change_type')
+
+        if not all([original_lesson_id, date_str, change_type_str]):
+            return jsonify({"error": "Не указаны обязательные поля: original_lesson_id, date, change_type."}), 400
+
+        try:
+            date_obj = datetime.strptime(date_str, '%Y-%m-%d').date()
+        except ValueError:
+            return jsonify({"error": "Неверный формат даты. Используйте YYYY-MM-DD."}), 400
+
+        try:
+            change_type = ChangeType(change_type_str)
+        except ValueError:
+            return jsonify({"error": f"Неверный тип изменения: {change_type_str}. Допустимые значения: {list(ChangeType.__members__.keys())}"}), 400
+
+        # Проверим, что урок существует
+        original_lesson = Lesson.query.get(original_lesson_id)
+        if not original_lesson:
+            return jsonify({"error": f"Оригинальный урок с ID {original_lesson_id} не найден."}), 404
+
+        # Извлекаем остальные поля
+        new_teacher_id = data.get('new_teacher_id')
+        new_day_of_week = data.get('new_day_of_week')
+        new_lesson_number = data.get('new_lesson_number')
+        new_room_id = data.get('new_room_id')
+        reason = data.get('reason')
+
+        success, message = add_temporary_change(
+            original_lesson_id=original_lesson_id,
+            date=date_obj,
+            change_type=change_type,
+            new_teacher_id=new_teacher_id,
+            new_day_of_week=new_day_of_week,
+            new_lesson_number=new_lesson_number,
+            new_room_id=new_room_id,
+            reason=reason
+        )
+
+        if success:
+            return jsonify({"message": message}), 201
+        else:
+            return jsonify({"error": message}), 400
+
+    # --- API для удаления временного изменения ---
+    @app.route('/api/temporary_changes/<int:change_id>', methods=['DELETE'])
+    def delete_temporary_change(change_id):
+        success, message = remove_temporary_change(change_id)
+        if success:
+            return jsonify({"message": message}), 200
+        else:
+            return jsonify({"error": message}), 400
+
 
     # --- API для ИИ-помощника ---
     @app.route('/api/ai_command', methods=['POST'])
