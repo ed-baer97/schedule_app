@@ -105,7 +105,54 @@
             </form>
         </div>
     </div>
-
+    <!-- НОВОЕ: Модальное окно для управления временными изменениями -->
+    <div id="temp-change-modal">
+        <div class="modal-content">
+            <h3>Управление временным изменением</h3>
+            <form id="temp-change-form">
+                <input type="hidden" id="temp-change-lesson-id">
+                <input type="hidden" id="temp-change-date">
+                <label for="temp-change-type">Тип изменения:</label>
+                <select id="temp-change-type" required>
+                    <option value="substitution">Замена учителя</option>
+                    <option value="movement">Перенос урока</option>
+                    <option value="cancellation">Отмена урока</option>
+                </select>
+                <div id="substitution-fields" style="display: none;">
+                    <label for="temp-change-new-teacher">Новый учитель:</label>
+                    <select id="temp-change-new-teacher"></select>
+                </div>
+                <div id="movement-fields" style="display: none;">
+                    <label for="temp-change-new-day">Новый день:</label>
+                    <select id="temp-change-new-day">
+                        <option value="0">Понедельник</option>
+                        <option value="1">Вторник</option>
+                        <option value="2">Среда</option>
+                        <option value="3">Четверг</option>
+                        <option value="4">Пятница</option>
+                    </select>
+                    <label for="temp-change-new-slot">Новый номер урока:</label>
+                    <select id="temp-change-new-slot">
+                        <option value="1">1</option>
+                        <option value="2">2</option>
+                        <option value="3">3</option>
+                        <option value="4">4</option>
+                        <option value="5">5</option>
+                        <option value="6">6</option>
+                    </select>
+                    <label for="temp-change-new-room">Новый кабинет:</label>
+                    <select id="temp-change-new-room"></select>
+                </div>
+                <label for="temp-change-reason">Причина:</label>
+                <input type="text" id="temp-change-reason" />
+                <div class="modal-buttons">
+                    <button type="button" id="cancel-temp-change">Отмена</button>
+                    <button type="button" id="delete-temp-change" style="background-color: #dc3545;">Удалить изменение</button>
+                    <button type="submit" id="save-temp-change">Сохранить изменение</button>
+                </div>
+            </form>
+        </div>
+    </div>
     <script>
         // --- Глобальные переменные ---
         let scheduleData = []; // Базовое расписание для дня недели
@@ -253,14 +300,12 @@
                 addChatMessage(`Ошибка загрузки данных для ${date}: ${error.message}`, 'bot');
             }
         }
-        
         // --- Отображение расписания (новая структура) ---
         function renderSchedule() {
             const headersRow = document.getElementById('schedule-headers');
             const tbody = document.getElementById('schedule-body');
             headersRow.innerHTML = ''; // Очистить перед рендерингом
             tbody.innerHTML = ''; // Очистить перед рендерингом
-
             // Создание заголовков (столбцы = классы)
             const headerDayCell = document.createElement('th');
             headerDayCell.textContent = 'День';
@@ -269,7 +314,6 @@
             headerDayCell.style.zIndex = '10';
             headerDayCell.style.backgroundColor = '#f2f2f2'; // Убедимся, что фон заголовка виден
             headersRow.appendChild(headerDayCell);
-
             const headerLessonNumCell = document.createElement('th');
             headerLessonNumCell.textContent = 'Урок';
             headerLessonNumCell.style.position = 'sticky';
@@ -277,253 +321,141 @@
             headerLessonNumCell.style.zIndex = '10';
             headerLessonNumCell.style.backgroundColor = '#f2f2f2'; // Убедимся, что фон заголовка виден
             headersRow.appendChild(headerLessonNumCell);
-
             classesList.forEach(cls => {
                 const headerCell = document.createElement('th');
                 headerCell.textContent = cls.name;
                 headersRow.appendChild(headerCell);
             });
-
             // Предположим, у нас 6 пар в день
             const maxLessons = 6;
-
             // Группируем ВРЕМЕННЫЕ ИЗМЕНЕНИЯ по original_lesson_id для быстрого доступа
             const tempChangesByLessonId = {};
             temporaryChangesData.forEach(change => {
                 tempChangesByLessonId[change.original_lesson_id] = change;
             });
-
-            // Если выбрана конкретная дата, отображаем только один день
-            if (selectedDate) {
-                const dayNameFull = new Date(selectedDate).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }); // Показываем выбранную дату
-
-                // Строка заголовка дня
-                const dayHeaderRow = document.createElement('tr');
-                const dayHeaderCell = document.createElement('td');
-                dayHeaderCell.textContent = dayNameFull;
-                dayHeaderCell.className = 'day-header-cell';
-                dayHeaderCell.rowSpan = maxLessons + 1; // Объединяет 7 строк: 1 день + 6 уроков
-                dayHeaderRow.appendChild(dayHeaderCell);
-
-                // Второй столбец в строке заголовка дня - пустой
-                const emptyHeaderCell = document.createElement('td');
-                emptyHeaderCell.textContent = '';
-                emptyHeaderCell.className = 'lesson-number-header'; // Добавим класс для стилизации
-                dayHeaderRow.appendChild(emptyHeaderCell);
-
-                // Вместо этого добавляем пустые ячейки, соответствующие количеству классов
+            // Заполняем строки (уроки) - 7 строк (день + 6 уроков)
+            const dayNameFull = selectedDate ? new Date(selectedDate).toLocaleDateString('ru-RU', { weekday: 'long', day: 'numeric', month: 'long', year: 'numeric' }) : getDayNameFull(0); // Показываем выбранную дату или день недели
+            // Строка заголовка дня
+            const dayHeaderRow = document.createElement('tr');
+            const dayHeaderCell = document.createElement('td');
+            dayHeaderCell.textContent = dayNameFull;
+            dayHeaderCell.className = 'day-header-cell';
+            dayHeaderCell.rowSpan = maxLessons + 1; // Объединяет 7 строк: 1 день + 6 уроков
+            dayHeaderRow.appendChild(dayHeaderCell);
+            // Второй столбец в строке заголовка дня - пустой
+            const emptyHeaderCell = document.createElement('td');
+            emptyHeaderCell.textContent = '';
+            emptyHeaderCell.className = 'lesson-number-header'; // Добавим класс для стилизации
+            dayHeaderRow.appendChild(emptyHeaderCell);
+            // Вместо этого добавляем пустые ячейки, соответствующие количеству классов
+            classesList.forEach(cls => {
+                const emptyCell = document.createElement('td');
+                emptyCell.textContent = ''; // Оставляем пустым
+                dayHeaderRow.appendChild(emptyCell);
+            });
+            tbody.appendChild(dayHeaderRow);
+            // Строки номеров уроков
+            for (let lessonNum = 1; lessonNum <= maxLessons; lessonNum++) {
+                const row = document.createElement('tr');
+                // Ячейка с номером урока
+                const lessonNumCell = document.createElement('td');
+                lessonNumCell.textContent = lessonNum;
+                lessonNumCell.className = 'lesson-number-header';
+                row.appendChild(lessonNumCell);
+                // Ячейки для каждого класса
                 classesList.forEach(cls => {
-                    const emptyCell = document.createElement('td');
-                    emptyCell.textContent = ''; // Оставляем пустым
-                    dayHeaderRow.appendChild(emptyCell);
-                });
-                tbody.appendChild(dayHeaderRow);
-
-                // Строки номеров уроков
-                for (let lessonNum = 1; lessonNum <= maxLessons; lessonNum++) {
-                    const row = document.createElement('tr');
-
-                    // Ячейка с номером урока
-                    const lessonNumCell = document.createElement('td');
-                    lessonNumCell.textContent = lessonNum;
-                    lessonNumCell.className = 'lesson-number-header';
-                    row.appendChild(lessonNumCell);
-
-                    // Ячейки для каждого класса
-                    classesList.forEach(cls => {
-                        const cell = document.createElement('td');
-                        cell.className = 'lesson-cell';
-                        cell.dataset.day = new Date(selectedDate).getDay() - 1; // Используем день недели из даты
-                        cell.dataset.lessonNumber = lessonNum;
-                        cell.dataset.classId = cls.id; // ID класса для этой ячейки
-
-                        // Найдем уроки для этого класса, дня и номера урока из базового расписания
-                        const lessonsInSlot = scheduleData.filter(lesson => {
-                            const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
-                            return subgroup && subgroup.class_id === cls.id && lesson.lesson_number === lessonNum;
-                        });
-
-
-                        if (lessonsInSlot.length > 0) {
-                            // Создаём контейнер для уроков
-                            const lessonsContainer = document.createElement('div');
-                            lessonsContainer.className = 'lessons-container';
-                            lessonsInSlot.forEach(lesson => {
-                                const lessonDiv = document.createElement('div');
-                                // Проверим, есть ли временное изменение для этого урока на выбранную дату
-                                const tempChange = tempChangesByLessonId[lesson.id];
-                                if (tempChange) {
-                                    // --- Применяем изменения ---
-                                    // Выбираем данные из временного изменения или оставляем оригинальные
-                                    const displaySubjectId = lesson.subject_id; // Предмет не меняется
-                                    const displayTeacherId = tempChange.new_teacher_id || lesson.teacher_id;
-                                    const displayRoomId = tempChange.new_room_id || lesson.room_id;
-                                    const displayDay = tempChange.new_day_of_week !== undefined ? tempChange.new_day_of_week : lesson.day_of_week;
-                                    const displaySlot = tempChange.new_lesson_number !== undefined ? tempChange.new_lesson_number : lesson.lesson_number;
-
-                                    // Найти соответствующие названия из списков
-                                    const subject = subjectsList.find(s => s.id === displaySubjectId);
-                                    const teacher = teachersList.find(t => t.id === displayTeacherId);
-                                    const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
-                                    const room = roomsList.find(r => r.id === displayRoomId);
-
-                                    // Отображение: Предмет, Кабинет, Учитель + пометка об изменении
-                                    lessonDiv.className = 'lesson-details';
-                                    lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
-                                    lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
-                                    lessonDiv.dataset.originalLessonId = lesson.id; // Для временных изменений
-                                    lessonDiv.dataset.date = selectedDate; // Для временных изменений
-                                    // Подсветка для временного изменения
-                                    if (tempChange.change_type === 'substitution') {
-                                        lessonDiv.style.backgroundColor = '#ffeb3b'; // Жёлтый для замены
-                                    } else if (tempChange.change_type === 'movement') {
-                                        lessonDiv.style.backgroundColor = '#4caf50'; // Зелёный для переноса
-                                    } else if (tempChange.change_type === 'cancellation') {
-                                        lessonDiv.style.backgroundColor = '#f44336'; // Красный для отмены
-                                        lessonDiv.style.opacity = '0.6'; // Сделать полупрозрачным
-                                    }
-                                    lessonDiv.innerHTML = `
-                                        <div class="subject-name" data-subject-id="${displaySubjectId}">${subject ? subject.name : 'N/A'}</div>
-                                        <div class="room-name" data-room-id="${displayRoomId}">${room ? room.name : 'N/A'}</div>
-                                        <div class="teacher-name" data-teacher-id="${displayTeacherId}">${teacher ? teacher.name : 'N/A'}</div>
-                                        <div class="change-type">${tempChange.change_type === 'substitution' ? 'Замена' : tempChange.change_type === 'movement' ? 'Перенос' : 'Отмена'}</div>
-                                        <div class="change-date">${selectedDate}</div> <!-- НОВОЕ: Показываем дату изменения -->
-                                    `;
-                                } else {
-                                    // --- Без изменений ---
-                                    // Найти соответствующие названия из списков
-                                    const teacher = teachersList.find(t => t.id === lesson.teacher_id);
-                                    const subject = subjectsList.find(s => s.id === lesson.subject_id);
-                                    const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
-                                    const room = roomsList.find(r => r.id === lesson.room_id);
-
-                                    // Отображение: Предмет, Кабинет, Учитель
-                                    lessonDiv.className = 'lesson-details';
-                                    lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
-                                    lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
-                                    lessonDiv.dataset.originalLessonId = lesson.id; // Для временных изменений
-                                    lessonDiv.dataset.date = selectedDate; // Для временных изменений
-                                    lessonDiv.innerHTML = `
-                                        <div class="subject-name" data-subject-id="${lesson.subject_id}">${subject ? subject.name : 'N/A'}</div>
-                                        <div class="room-name" data-room-id="${lesson.room_id}">${room ? room.name : 'N/A'}</div>
-                                        <div class="teacher-name" data-teacher-id="${lesson.teacher_id}">${teacher ? teacher.name : 'N/A'}</div>
-                                    `;
-                                }
-                                lessonsContainer.appendChild(lessonDiv);
-                            });
-                            cell.appendChild(lessonsContainer);
-                        } else {
-                            // Пустая ячейка
-                            cell.textContent = 'Нет урока';
-                            cell.style.backgroundColor = '#f9f9f9';
-                            // Добавим атрибуты для потенциального создания урока на эту дату
-                            cell.dataset.originalLessonId = ''; // Пока пусто
-                            cell.dataset.date = selectedDate;
-                        }
-                        row.appendChild(cell);
+                    const cell = document.createElement('td');
+                    cell.className = 'lesson-cell';
+                    cell.dataset.day = selectedDate ? new Date(selectedDate).getDay() - 1 : 0; // Используем день недели из даты, если выбрана
+                    cell.dataset.lessonNumber = lessonNum;
+                    cell.dataset.classId = cls.id; // ID класса для этой ячейки
+                    // Найдем уроки для этого класса, дня и номера урока из базового расписания
+                    const lessonsInSlot = scheduleData.filter(lesson => {
+                        const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
+                        return subgroup && subgroup.class_id === cls.id && lesson.lesson_number === lessonNum;
                     });
-                    tbody.appendChild(row);
-                }
-            } else {
-                // Постоянное расписание - отображаем все дни недели (понедельник-пятница)
-                const daysCount = 5; // Понедельник-пятница
 
-                // Для постоянного расписания создаем строки для каждого дня недели
-                for (let dayIndex = 0; dayIndex < daysCount; dayIndex++) {
-                    const dayNameFull = getDayNameFull(dayIndex);
+                    if (lessonsInSlot.length > 0) {
+                        // Создаём контейнер для уроков
+                        const lessonsContainer = document.createElement('div');
+                        lessonsContainer.className = 'lessons-container';
+                        lessonsInSlot.forEach(lesson => {
+                            const lessonDiv = document.createElement('div');
+                            // Проверим, есть ли временное изменение для этого урока на выбранную дату
+                            const tempChange = tempChangesByLessonId[lesson.id];
+                            if (tempChange) {
+                                // --- Применяем изменения ---
+                                // Выбираем данные из временного изменения или оставляем оригинальные
+                                const displaySubjectId = lesson.subject_id; // Предмет не меняется
+                                const displayTeacherId = tempChange.new_teacher_id || lesson.teacher_id;
+                                const displayRoomId = tempChange.new_room_id || lesson.room_id;
+                                const displayDay = tempChange.new_day_of_week !== undefined ? tempChange.new_day_of_week : lesson.day_of_week;
+                                const displaySlot = tempChange.new_lesson_number !== undefined ? tempChange.new_lesson_number : lesson.lesson_number;
 
-                    // Строка заголовка дня
-                    const dayHeaderRow = document.createElement('tr');
-                    const dayHeaderCell = document.createElement('td');
-                    dayHeaderCell.textContent = dayNameFull;
-                    dayHeaderCell.className = 'day-header-cell';
-                    dayHeaderCell.rowSpan = maxLessons + 1; // Объединяет 7 строк: 1 день + 6 уроков
-                    dayHeaderRow.appendChild(dayHeaderCell);
-
-                    // Второй столбец в строке заголовка дня - пустой
-                    const emptyHeaderCell = document.createElement('td');
-                    emptyHeaderCell.textContent = '';
-                    emptyHeaderCell.className = 'lesson-number-header'; // Добавим класс для стилизации
-                    dayHeaderRow.appendChild(emptyHeaderCell);
-
-                    // Вместо этого добавляем пустые ячейки, соответствующие количеству классов
-                    classesList.forEach(cls => {
-                        const emptyCell = document.createElement('td');
-                        emptyCell.textContent = ''; // Оставляем пустым
-                        dayHeaderRow.appendChild(emptyCell);
-                    });
-                    tbody.appendChild(dayHeaderRow);
-
-                    // Строки номеров уроков для текущего дня
-                    for (let lessonNum = 1; lessonNum <= maxLessons; lessonNum++) {
-                        const row = document.createElement('tr');
-
-                        // Ячейка с номером урока
-                        const lessonNumCell = document.createElement('td');
-                        lessonNumCell.textContent = lessonNum;
-                        lessonNumCell.className = 'lesson-number-header';
-                        row.appendChild(lessonNumCell);
-
-                        // Ячейки для каждого класса
-                        classesList.forEach(cls => {
-                            const cell = document.createElement('td');
-                            cell.className = 'lesson-cell';
-                            cell.dataset.day = dayIndex; // Устанавливаем день недели
-                            cell.dataset.lessonNumber = lessonNum;
-                            cell.dataset.classId = cls.id; // ID класса для этой ячейки
-
-                            // Найдем уроки для этого класса, текущего дня и номера урока из базового расписания
-                            const lessonsInSlot = scheduleData.filter(lesson => {
+                                // Найти соответствующие названия из списков
+                                const subject = subjectsList.find(s => s.id === displaySubjectId);
+                                const teacher = teachersList.find(t => t.id === displayTeacherId);
                                 const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
-                                return subgroup && subgroup.class_id === cls.id && lesson.day_of_week === dayIndex && lesson.lesson_number === lessonNum;
-                            });
+                                const room = roomsList.find(r => r.id === displayRoomId);
 
-
-                            if (lessonsInSlot.length > 0) {
-                                // Создаём контейнер для уроков
-                                const lessonsContainer = document.createElement('div');
-                                lessonsContainer.className = 'lessons-container';
-                                lessonsInSlot.forEach(lesson => {
-                                    const lessonDiv = document.createElement('div');
-
-                                    // --- Без изменений ---
-                                    // Найти соответствующие названия из списков
-                                    const teacher = teachersList.find(t => t.id === lesson.teacher_id);
-                                    const subject = subjectsList.find(s => s.id === lesson.subject_id);
-                                    const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
-                                    const room = roomsList.find(r => r.id === lesson.room_id);
-
-                                    // Отображение: Предмет, Кабинет, Учитель
-                                    lessonDiv.className = 'lesson-details';
-                                    lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
-                                    lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
-                                    lessonDiv.dataset.originalLessonId = lesson.id; // Для временных изменений
-                                    lessonDiv.dataset.date = selectedDate; // Для временных изменений
-                                    lessonDiv.innerHTML = `
-                                        <div class="subject-name" data-subject-id="${lesson.subject_id}">${subject ? subject.name : 'N/A'}</div>
-                                        <div class="room-name" data-room-id="${lesson.room_id}">${room ? room.name : 'N/A'}</div>
-                                        <div class="teacher-name" data-teacher-id="${lesson.teacher_id}">${teacher ? teacher.name : 'N/A'}</div>
-                                    `;
-                                    lessonsContainer.appendChild(lessonDiv);
-                                });
-                                cell.appendChild(lessonsContainer);
+                                // Отображение: Предмет, Кабинет, Учитель + пометка об изменении
+                                lessonDiv.className = 'lesson-details';
+                                lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
+                                lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
+                                lessonDiv.dataset.originalLessonId = lesson.id; // Для временных изменений
+                                lessonDiv.dataset.date = selectedDate; // Для временных изменений
+                                // Подсветка для временного изменения
+                                if (tempChange.change_type === 'substitution') {
+                                    lessonDiv.style.backgroundColor = '#ffeb3b'; // Жёлтый для замены
+                                } else if (tempChange.change_type === 'movement') {
+                                    lessonDiv.style.backgroundColor = '#4caf50'; // Зелёный для переноса
+                                } else if (tempChange.change_type === 'cancellation') {
+                                    lessonDiv.style.backgroundColor = '#f44336'; // Красный для отмены
+                                    lessonDiv.style.opacity = '0.6'; // Сделать полупрозрачным
+                                }
+                                lessonDiv.innerHTML = `
+                                    <div class="subject-name" data-subject-id="${displaySubjectId}">${subject ? subject.name : 'N/A'}</div>
+                                    <div class="room-name" data-room-id="${displayRoomId}">${room ? room.name : 'N/A'}</div>
+                                    <div class="teacher-name" data-teacher-id="${displayTeacherId}">${teacher ? teacher.name : 'N/A'}</div>
+                                    <div class="change-type">${tempChange.change_type === 'substitution' ? 'Замена' : tempChange.change_type === 'movement' ? 'Перенос' : 'Отмена'}</div>
+                                    <div class="change-date">${selectedDate}</div> <!-- НОВОЕ: Показываем дату изменения -->
+                                `;
                             } else {
-                                // Пустая ячейка
-                                cell.textContent = 'Нет урока';
-                                cell.style.backgroundColor = '#f9f9f9';
-                                // Добавим атрибуты для потенциального создания урока
-                                cell.dataset.originalLessonId = ''; // Пока пусто
-                                cell.dataset.date = selectedDate;
+                                // --- Без изменений ---
+                                // Найти соответствующие названия из списков
+                                const teacher = teachersList.find(t => t.id === lesson.teacher_id);
+                                const subject = subjectsList.find(s => s.id === lesson.subject_id);
+                                const subgroup = subgroupsList.find(sg => sg.id === lesson.subgroup_id);
+                                const room = roomsList.find(r => r.id === lesson.room_id);
+                                // Отображение: Предмет, Кабинет, Учитель
+                                lessonDiv.className = 'lesson-details';
+                                lessonDiv.dataset.lessonId = lesson.id; // Для редактирования
+                                lessonDiv.dataset.subgroupId = lesson.subgroup_id; // Добавим ID подгруппы
+                                lessonDiv.dataset.originalLessonId = lesson.id; // Для временных изменений
+                                lessonDiv.dataset.date = selectedDate; // Для временных изменений
+                                lessonDiv.innerHTML = `
+                                    <div class="subject-name" data-subject-id="${lesson.subject_id}">${subject ? subject.name : 'N/A'}</div>
+                                    <div class="room-name" data-room-id="${lesson.room_id}">${room ? room.name : 'N/A'}</div>
+                                    <div class="teacher-name" data-teacher-id="${lesson.teacher_id}">${teacher ? teacher.name : 'N/A'}</div>
+                                `;
                             }
-                            row.appendChild(cell);
+                            lessonsContainer.appendChild(lessonDiv);
                         });
-                        tbody.appendChild(row);
+                        cell.appendChild(lessonsContainer);
+                    } else {
+                        // Пустая ячейка
+                        cell.textContent = 'Нет урока';
+                        cell.style.backgroundColor = '#f9f9f9';
+                        // Добавим атрибуты для потенциального создания урока на эту дату
+                        cell.dataset.originalLessonId = ''; // Пока пусто
+                        cell.dataset.date = selectedDate;
                     }
-                }
+                    row.appendChild(cell);
+                });
+                tbody.appendChild(row);
             }
             attachEventListeners();
         }
-        // --- Отображение расписания (новая структура) ---
         // --- Подсветка учителя (новая логика) ---
         function highlightTeacher(teacherId) {
             // Сброс предыдущей подсветки учителя
@@ -615,12 +547,12 @@
                     const lessonDetailsDivs = clickedLessonCell.querySelectorAll('.lesson-details');
                     if (lessonDetailsDivs.length > 0) {
                         // --- НОВОЕ: Если есть уроки, показываем диалог ---
-                        // Если выбрана дата, показываем диалог для редактирования урока
+                        // Если выбрана дата, показываем диалог для управления временным изменением
                         if (date) {
-                            // При наличии даты также открываем обычное окно редактирования
                             const lessonDiv = lessonDetailsDivs[0]; // Берём первый урок в слоте для примера
-                            const lessonId = parseInt(lessonDiv.dataset.lessonId); // Используем lessonId для редактирования
-                            openEditModal(lessonId, day, lessonNumber, classId);
+                            const lessonId = parseInt(lessonDiv.dataset.originalLessonId); // Используем originalLessonId
+                            const lessonDate = lessonDiv.dataset.date;
+                            openTempChangeModal(lessonId, lessonDate);
                         } else {
                             // Если дата не выбрана, показываем старый диалог
                             showLessonOptionsDialog(clickedLessonCell, lessonDetailsDivs, day, lessonNumber, classId);
@@ -628,11 +560,9 @@
                     } else {
                         // Если div нет, значит ячейка пуста.
                         // Если выбрана дата, можно предложить создать временный урок (например, отменить или добавить).
-                        // Теперь разрешаем создание уроков на пустые слоты с датой.
+                        // Для простоты, пока не будем создавать уроки на пустые слоты с датой.
                         if (date) {
-                            // Если дата выбрана, открываем окно создания урока на пустой слот
-                            console.log("Клик на пустую ячейку с датой:", "День:", day, "Урок:", lessonNumber, "Класс:", classId, "Дата:", date);
-                            openEditModal(null, day, lessonNumber, classId);
+                            addChatMessage("Нельзя создать урок на пустой слот с датой. Только через изменение существующего урока.", 'bot');
                         } else {
                             // Если дата не выбрана, открываем окно создания.
                             console.log("Клик на пустую ячейку:", "День:", day, "Урок:", lessonNumber, "Класс:", classId);
@@ -1489,66 +1419,5 @@
             loadShifts(); // Сначала загружаем список смен
         });
     </script>
-    
-    <!-- Модальное окно для временных изменений -->
-    <div id="temp-change-modal">
-        <div class="modal-content">
-            <h3>Управление временным изменением</h3>
-            <form id="temp-change-form">
-                <input type="hidden" id="temp-change-lesson-id">
-                <input type="hidden" id="temp-change-date">
-                
-                <label for="temp-change-type">Тип изменения:</label>
-                <select id="temp-change-type" required>
-                    <option value="">Выберите тип</option>
-                    <option value="substitution">Замена</option>
-                    <option value="movement">Перенос</option>
-                    <option value="cancellation">Отмена</option>
-                </select>
-                
-                <label for="temp-change-reason">Причина:</label>
-                <input type="text" id="temp-change-reason">
-                
-                <!-- Поля для замены -->
-                <div id="substitution-fields" style="display: none;">
-                    <label for="temp-change-new-teacher">Новый учитель:</label>
-                    <select id="temp-change-new-teacher"></select>
-                </div>
-                
-                <!-- Поля для переноса -->
-                <div id="movement-fields" style="display: none;">
-                    <label for="temp-change-new-day">Новый день:</label>
-                    <select id="temp-change-new-day">
-                        <option value="">Выберите день</option>
-                        <option value="0">Понедельник</option>
-                        <option value="1">Вторник</option>
-                        <option value="2">Среда</option>
-                        <option value="3">Четверг</option>
-                        <option value="4">Пятница</option>
-                    </select>
-                    
-                    <label for="temp-change-new-slot">Новый урок:</label>
-                    <select id="temp-change-new-slot">
-                        <option value="">Выберите урок</option>
-                        <option value="1">1</option>
-                        <option value="2">2</option>
-                        <option value="3">3</option>
-                        <option value="4">4</option>
-                        <option value="5">5</option>
-                        <option value="6">6</option>
-                    </select>
-                    
-                    <label for="temp-change-new-room">Новый кабинет:</label>
-                    <select id="temp-change-new-room"></select>
-                </div>
-                
-                <div class="modal-buttons">
-                    <button type="button" id="cancel-temp-change">Отмена</button>
-                    <button type="button" id="delete-temp-change" style="display: none;">Удалить</button>
-                    <button type="submit" id="save-temp-change">Сохранить</button>
-                </div>
-            </form>
-        </div>
-    </div>
 </body>
 </html>
