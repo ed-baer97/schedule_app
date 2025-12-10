@@ -1,0 +1,2997 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<style>
+    .resizable-container {
+        position: relative;
+    }
+    
+    .resizable-panel {
+        transition: none;
+    }
+    
+    .resizer {
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+    
+    .resizer:hover {
+        background-color: #adb5bd;
+    }
+    
+    .resizer.active {
+        background-color: #6c757d;
+    }
+    
+    /* Стили для изменения размера чата */
+    .chat-resizable-container {
+        position: relative;
+    }
+    
+    .chat-resizer {
+        user-select: none;
+        -webkit-user-select: none;
+        -moz-user-select: none;
+        -ms-user-select: none;
+    }
+    
+    .chat-resizer:hover {
+        background-color: #adb5bd;
+    }
+    
+    .chat-resizer.active {
+        background-color: #6c757d;
+    }
+    
+    /* Стили для плиток предложений */
+    .suggestion-tiles-container {
+        display: grid;
+        grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+        gap: 12px;
+        max-height: 400px;
+        overflow-y: auto;
+        padding: 8px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+    
+    /* Для контейнера предложений в чате - используем всю ширину и растягиваем плитки */
+    .schedule-container-full-width {
+        width: 100% !important;
+        max-width: 100% !important;
+        align-self: stretch !important; /* Растягиваем на всю ширину родителя */
+    }
+    
+    /* Убеждаемся, что родительский messageDiv не ограничивает ширину контейнера с расписанием */
+    [data-message-index] .schedule-container-full-width {
+        width: 100% !important;
+        max-width: 100% !important;
+    }
+    
+    #aiChatContainer .suggestion-tiles-container,
+    .schedule-container .suggestion-tiles-container,
+    .schedule-container-full-width .suggestion-tiles-container,
+    .chat-panel .suggestion-tiles-container,
+    #schedule-container-0 .suggestion-tiles-container,
+    [id^="schedule-container-"] .suggestion-tiles-container {
+        width: 100%;
+        max-width: 100%;
+        grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+    }
+    
+    /* Убеждаемся, что плитки растягиваются на всю доступную ширину */
+    .suggestion-tile {
+        background: #ffffff;
+        border: 1px solid #dee2e6;
+        border-radius: 8px;
+        padding: 12px;
+        transition: all 0.2s ease;
+        cursor: pointer;
+        position: relative;
+        min-width: 0; /* Позволяет плиткам сжиматься меньше минимального размера grid */
+        width: 100%; /* Растягиваем плитки на всю доступную ширину колонки */
+    }
+    
+    .suggestion-tile:hover {
+        border-color: #0d6efd;
+        box-shadow: 0 2px 8px rgba(13, 110, 253, 0.15);
+        transform: translateY(-2px);
+    }
+    
+    .suggestion-tile-header {
+        font-weight: 600;
+        color: #212529;
+        margin-bottom: 8px;
+        font-size: 0.95rem;
+    }
+    
+    .suggestion-tile-body {
+        font-size: 0.85rem;
+        color: #6c757d;
+        margin-bottom: 8px;
+    }
+    
+    .suggestion-tile-reason {
+        font-size: 0.8rem;
+        color: #868e96;
+        font-style: italic;
+        margin-bottom: 8px;
+    }
+    
+    .suggestion-tile-footer {
+        margin-top: 8px;
+    }
+    
+    .suggestion-tile-btn {
+        width: 100%;
+        font-size: 0.85rem;
+        padding: 6px 12px;
+    }
+    
+    /* Выравнивание содержимого ячеек расписания */
+    #scheduleTable td,
+    #temporaryScheduleTable td {
+        vertical-align: top;
+        text-align: left;
+        padding: 8px;
+    }
+    
+    #scheduleTable td .small,
+    #temporaryScheduleTable td .small {
+        display: flex;
+        flex-direction: column;
+        gap: 8px; /* Единое расстояние между всеми элементами */
+    }
+    
+    #scheduleTable td .d-flex,
+    #temporaryScheduleTable td .d-flex {
+        align-items: center;
+        justify-content: space-between;
+        margin: 0; /* Убираем все отступы, используем gap родителя */
+    }
+    
+    /* Унифицируем отступы для всех элементов в ячейках */
+    #scheduleTable td .mb-1,
+    #temporaryScheduleTable td .mb-1,
+    #scheduleTable td .mb-2,
+    #temporaryScheduleTable td .mb-2 {
+        margin-bottom: 0; /* Убираем margin-bottom, используем gap родителя */
+    }
+    
+    #scheduleTable td .mt-1,
+    #temporaryScheduleTable td .mt-1,
+    #scheduleTable td .mt-2,
+    #temporaryScheduleTable td .mt-2 {
+        margin-top: 0; /* Убираем margin-top, используем gap родителя */
+    }
+    
+    /* Разделители между предметами - используем gap вместо margin */
+    #scheduleTable td hr,
+    #temporaryScheduleTable td hr {
+        margin: 0; /* Убираем margin, gap родителя создаст нужное расстояние */
+        border-top: 1px solid #dee2e6;
+    }
+    
+    /* Выравнивание кнопок в ячейках */
+    #scheduleTable td .btn,
+    #temporaryScheduleTable td .btn {
+        flex-shrink: 0;
+        margin: 0; /* Убираем margin, используем gap родителя */
+    }
+    
+    /* Единый стиль для временного расписания (как у постоянного) */
+    #temporaryScheduleTable {
+        background-color: #ffffff;
+    }
+    
+    /* Стили для уроков во временном расписании - единый стиль */
+    #temporaryScheduleTable td .small > div {
+        background-color: #f8f9fa;
+        border: 1px solid #dee2e6;
+        border-radius: 6px;
+        padding: 8px;
+        transition: all 0.2s ease;
+    }
+    
+    #temporaryScheduleTable td .small > div:hover {
+        border-color: #0d6efd;
+        box-shadow: 0 2px 4px rgba(13, 110, 253, 0.15);
+    }
+</style>
+<!-- Данные для JavaScript передаются через script-тег для избежания проблем с длинными атрибутами -->
+<script type="application/json" id="scheduleInitialData">
+{
+    "shift_id": {{ active_shift_id }},
+    "schedule_data": {{ schedule_data|tojson|safe }},
+    "lessons_count": {{ lessons_count|tojson|safe }},
+    "classes_list": {{ classes_list|tojson|safe }},
+    "subjects_list": {{ subjects_list|tojson|safe }},
+    "teachers_list": {{ teachers_list|tojson|safe }}
+}
+</script>
+
+<div class="mb-4">
+    <div class="d-flex justify-content-between align-items-center mb-3">
+        <div>
+            <h2 class="mb-1"><i class="bi bi-calendar-week"></i> Расписание</h2>
+            <p class="text-muted mb-0">Управление постоянным и временным расписанием уроков</p>
+        </div>
+    </div>
+    <div class="btn-group" id="scheduleDataContainer">
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addShiftModal">
+            <i class="bi bi-plus-circle"></i> Добавить смену
+        </button>
+        <a href="/admin/shift/{{ active_shift_id }}/classes" class="btn btn-info" id="manageShiftClassesBtn">
+            <i class="bi bi-people"></i> Классы смены
+        </a>
+        <button class="btn btn-secondary" data-bs-toggle="modal" data-bs-target="#settingsModal">
+            <i class="bi bi-gear"></i> Настройки уроков
+        </button>
+        <button class="btn btn-success" id="exportPermanentScheduleBtn" title="Скачать постоянное расписание в Excel">
+            <i class="bi bi-file-earmark-excel"></i> Скачать расписание
+        </button>
+        <button class="btn btn-info" id="sendScheduleTelegramBtn" title="Отправить расписание всем учителям в Telegram">
+            <i class="bi bi-telegram"></i> Отправить расписание
+        </button>
+        <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearScheduleModal" title="Очистить все постоянное расписание">
+            <i class="bi bi-trash"></i> Очистить расписание
+        </button>
+    </div>
+</div>
+
+<!-- Два окна: слева расписание, справа бот -->
+<div class="resizable-container" style="height: calc(100vh - 200px); display: flex; gap: 0;">
+    <!-- Левое окно: Расписание -->
+    <div class="resizable-panel" id="schedulePanel" style="flex: 0 0 66.666%; height: 100%; display: flex; flex-direction: column; min-width: 300px; max-width: 90%;">
+        <div class="card h-100 d-flex flex-column">
+            <div class="card-header flex-shrink-0">
+                <!-- Вкладки для постоянного и временного расписания -->
+                <ul class="nav nav-tabs card-header-tabs" id="scheduleTabs" role="tablist">
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link active" id="permanent-tab" data-bs-toggle="tab" data-bs-target="#permanent-schedule" type="button" role="tab">
+                            Постоянное расписание
+                        </button>
+                    </li>
+                    <li class="nav-item" role="presentation">
+                        <button class="nav-link" id="temporary-tab" data-bs-toggle="tab" data-bs-target="#temporary-schedule" type="button" role="tab">
+                            Временное расписание
+                        </button>
+                    </li>
+                </ul>
+            </div>
+            <div class="card-body overflow-auto flex-grow-1" style="max-height: 100%;">
+                <div class="tab-content" id="scheduleTabContent">
+                    <!-- Вкладка постоянного расписания -->
+                    <div class="tab-pane fade show active" id="permanent-schedule" role="tabpanel">
+                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                            <h6 class="mb-0">Постоянное расписание</h6>
+                            <select id="shiftSelect" class="form-select form-select-sm" style="width: auto;">
+                                {% for shift in shifts %}
+                                    <option value="{{ shift.id }}" {% if shift.is_active %}selected{% endif %}>{{ shift.name }}</option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm" id="scheduleTable">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th rowspan="2" class="align-middle">День / Урок</th>
+                                        {% for cls in classes %}
+                                            <th class="text-center">{{ cls.name }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        {% for cls in classes %}
+                                            <th class="text-center" style="min-width: 150px;">
+                                                <button class="btn btn-sm btn-outline-primary add-lesson-to-class-btn" 
+                                                        data-class-id="{{ cls.id }}"
+                                                        title="Добавить урок">
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody id="scheduleTableBody">
+                                    <!-- Таблица будет заполнена через JavaScript -->
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                    
+                    <!-- Вкладка временного расписания -->
+                    <div class="tab-pane fade" id="temporary-schedule" role="tabpanel">
+                        <div class="mb-3">
+                            <div class="row g-2 align-items-end">
+                                <div class="col-md-4">
+                                    <label for="temporaryDate" class="form-label">Выберите дату *</label>
+                                    <input type="date" class="form-control" id="temporaryDate" required>
+                                </div>
+                                <div class="col-md-4">
+                                    <label for="temporaryShiftSelect" class="form-label">Смена</label>
+                                    <select id="temporaryShiftSelect" class="form-select">
+                                        {% for shift in shifts %}
+                                            <option value="{{ shift.id }}" {% if shift.is_active %}selected{% endif %}>{{ shift.name }}</option>
+                                        {% endfor %}
+                                    </select>
+                                </div>
+                                <div class="col-md-4">
+                                    <div class="btn-group w-100" role="group">
+                                        <button class="btn btn-primary" id="copyFromPermanentBtn" disabled>
+                                            <i class="bi bi-copy"></i> Копировать из постоянного
+                                        </button>
+                                        <button class="btn btn-success" id="exportTemporaryScheduleBtn" disabled title="Скачать временное расписание в Excel">
+                                            <i class="bi bi-file-earmark-excel"></i> Скачать
+                                        </button>
+                                        <button class="btn btn-info" id="sendTemporaryTelegramBtn" disabled title="Отправить временное расписание учителям">
+                                            <i class="bi bi-telegram"></i> Отправить изменения
+                                        </button>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm" id="temporaryScheduleTable">
+                                <thead class="table-light sticky-top">
+                                    <tr>
+                                        <th rowspan="2" class="align-middle">Урок</th>
+                                        {% for cls in classes %}
+                                            <th class="text-center">{{ cls.name }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                    <tr>
+                                        {% for cls in classes %}
+                                            <th class="text-center" style="min-width: 150px;">
+                                                <button class="btn btn-sm btn-outline-primary add-temporary-lesson-to-class-btn" 
+                                                        data-class-id="{{ cls.id }}"
+                                                        title="Добавить урок"
+                                                        disabled>
+                                                    <i class="bi bi-plus"></i>
+                                                </button>
+                                            </th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody id="temporaryScheduleTableBody">
+                                    <tr>
+                                        <td colspan="100%" class="text-center text-muted">
+                                            Выберите дату для отображения временного расписания
+                                        </td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Разделитель для изменения размера -->
+    <div class="resizer" id="resizer" style="width: 4px; background-color: #dee2e6; cursor: col-resize; flex-shrink: 0; position: relative;">
+        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 40px; background-color: #adb5bd; border-radius: 2px;"></div>
+    </div>
+
+    <!-- Правое окно: Кнопка генерации расписания -->
+    <div class="resizable-panel" id="botPanel" style="flex: 0 0 33.334%; height: 100%; display: flex; flex-direction: column; min-width: 300px; max-width: 90%;">
+        <div class="card h-100 d-flex flex-column">
+            <div class="card-header flex-shrink-0">
+                <div class="d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-magic"></i> Генерация расписания</h5>
+                </div>
+            </div>
+            <div class="card-body overflow-auto flex-grow-1 d-flex flex-column" style="padding: 20px;">
+                <div class="text-center w-100 mb-3">
+                    <button class="btn btn-secondary btn-sm w-100 mb-3" data-bs-toggle="modal" data-bs-target="#filterSettingsModal">
+                        <i class="bi bi-funnel"></i> Фильтр
+                    </button>
+                </div>
+                <div class="text-center w-100 mt-auto">
+                    <button class="btn btn-warning btn-lg w-100 mb-3" id="generateScheduleBtnDirect" style="min-height: 60px;">
+                        <i class="bi bi-magic"></i> Сгенерировать расписание
+                    </button>
+                    <p class="text-muted small">
+                        Нажмите кнопку для генерации расписания с текущими настройками
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Добавить смену -->
+<div class="modal fade" id="addShiftModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить смену</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addShiftForm">
+                    <div class="mb-3">
+                        <label for="shiftName" class="form-label">Название смены *</label>
+                        <input type="text" class="form-control" id="shiftName" required placeholder="Например: Первая смена">
+                        <small class="text-muted">К смене привязаны только классы. Классы будут назначены при загрузке файла "Часы_Класс_Предмет" или при настройке нагрузки классов.</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Создать</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Настройки уроков -->
+<div class="modal fade" id="settingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Настройки количества уроков в днях</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="settingsForm">
+                    <input type="hidden" id="settingsShiftId" value="{{ active_shift_id }}">
+                    <div class="row">
+                        {% for day_num in range(1, 8) %}
+                        <div class="col-md-6 mb-3">
+                            <label class="form-label">{{ ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'][day_num - 1] }}</label>
+                            <input type="number" class="form-control" 
+                                   id="lessons_{{ day_num }}" 
+                                   name="day_{{ day_num }}" 
+                                   min="0" max="15" 
+                                   value="{{ lessons_count.get(day_num, 6) }}" 
+                                   required>
+                            <small class="text-muted">0 = день не отображается</small>
+                        </div>
+                        {% endfor %}
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Сохранить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Показать ошибку или сообщение -->
+<div class="modal fade" id="errorModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header" id="errorModalHeader">
+                <h5 class="modal-title" id="errorModalTitle">
+                    <i class="bi bi-exclamation-triangle"></i> Ошибка
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label class="form-label">Сообщение:</label>
+                    <textarea class="form-control" id="errorMessageText" rows="5" readonly style="font-family: monospace; font-size: 0.9em;"></textarea>
+                </div>
+                <div class="d-flex gap-2">
+                    <button type="button" class="btn btn-primary" id="copyErrorBtn">
+                        <i class="bi bi-clipboard"></i> Копировать
+                    </button>
+                    <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Очистить расписание -->
+<div class="modal fade" id="clearScheduleModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header bg-danger text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-exclamation-triangle"></i> Очистить расписание
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="alert alert-warning">
+                    <strong>Внимание!</strong> Это действие удалит все уроки из постоянного расписания для текущей смены.
+                </div>
+                <p>Вы уверены, что хотите очистить все постоянное расписание?</p>
+                <p class="text-muted mb-0">
+                    <small>Это действие нельзя отменить. Временное расписание не будет затронуто.</small>
+                </p>
+                <div id="clearScheduleError" class="alert alert-danger d-none mt-3"></div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-danger" id="confirmClearScheduleBtn">
+                    <i class="bi bi-trash"></i> Очистить расписание
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Фильтр для генерации расписания -->
+<div class="modal fade" id="filterSettingsModal" tabindex="-1">
+    <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-funnel"></i> Фильтр для генерации расписания
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="filterForm">
+                    <input type="hidden" id="filterShiftId" value="{{ active_shift_id }}">
+                    
+                    <!-- Выбор алгоритма генерации -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Алгоритм генерации расписания</label>
+                        <select class="form-select" id="generationAlgorithm" required>
+                            <option value="pipeline" selected>Hybrid (Рекомендуется) - Greedy → CP-SAT → LNS</option>
+                            <option value="genetic">Genetic - Генетический алгоритм (до 40 классов)</option>
+                            <option value="greedy">Greedy - Быстрый жадный алгоритм</option>
+                            <option value="cp_sat">CP-SAT - Точный алгоритм оптимизации</option>
+                            <option value="basic">Basic - Базовый алгоритм</option>
+                        </select>
+                        <small class="text-muted">
+                            <strong>Hybrid</strong> - гибридный алгоритм: Greedy размещает 70-85% уроков, CP-SAT добивает остальные с гарантией отсутствия окон, LNS полирует результат<br>
+                            <strong>Genetic</strong> - генетический алгоритм, идеально работает на школах до 40 классов<br>
+                            <strong>Greedy</strong> - быстрый, но менее точный<br>
+                            <strong>CP-SAT</strong> - точный, но медленный<br>
+                            <strong>Basic</strong> - простой базовый алгоритм
+                        </small>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Опция: уроки парами или строго один предмет в день -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Режим размещения уроков</label>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lessonMode" id="lessonModePairs" value="pairs" checked>
+                            <label class="form-check-label" for="lessonModePairs">
+                                Размещать уроки парами (два урока одного предмета подряд)
+                            </label>
+                        </div>
+                        <div class="form-check">
+                            <input class="form-check-input" type="radio" name="lessonMode" id="lessonModeSingle" value="single">
+                            <label class="form-check-label" for="lessonModeSingle">
+                                Строго один предмет в день (не размещать два урока одного предмета в один день)
+                            </label>
+                        </div>
+                    </div>
+                    
+                    <hr>
+                    
+                    <!-- Настройки подгрупп -->
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">Настройки подгрупп</label>
+                        <p class="text-muted small mb-3">
+                            Настройте пары предметов, которые могут быть размещены в одной ячейке расписания для подгрупп.
+                            Например: "Информатика" + "Информатика" (1 и 2 подгруппы) или "Информатика" + "Казахский язык".
+                        </p>
+                        
+                        <div id="subgroupPairsContainer">
+                            <!-- Пары предметов будут добавляться динамически -->
+                        </div>
+                        
+                        <button type="button" class="btn btn-sm btn-outline-primary" id="addSubgroupPairBtn">
+                            <i class="bi bi-plus-circle"></i> Добавить пару предметов
+                        </button>
+                    </div>
+                    
+                    <div class="alert alert-info">
+                        <i class="bi bi-info-circle"></i>
+                        <strong>Примечание:</strong> Подгруппы - это несколько уроков одного предмета или разных предметов, 
+                        которые размещаются в одной ячейке расписания (один слот: день + урок) для одного класса.
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+                <button type="button" class="btn btn-primary" id="saveFilterBtn">
+                    <i class="bi bi-save"></i> Сохранить настройки
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Прогресс генерации расписания -->
+<div class="modal fade" id="generationProgressModal" tabindex="-1" data-bs-backdrop="static" data-bs-keyboard="false">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title">
+                    <i class="bi bi-hourglass-split"></i> Генерация расписания
+                </h5>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <div class="d-flex justify-content-between mb-2">
+                        <span id="progressStageText">Инициализация...</span>
+                        <span id="progressPercentText">0%</span>
+                    </div>
+                    <div class="progress" style="height: 30px;">
+                        <div class="progress-bar progress-bar-striped progress-bar-animated" 
+                             id="generationProgressBar" 
+                             role="progressbar" 
+                             style="width: 0%" 
+                             aria-valuenow="0" 
+                             aria-valuemin="0" 
+                             aria-valuemax="100">
+                            <span id="progressBarText">0%</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="mt-3">
+                    <div id="progressDetails" class="small text-muted">
+                        <div id="progressStep1" class="mb-1">
+                            <i class="bi bi-circle"></i> <span>Проверка данных...</span>
+                        </div>
+                        <div id="progressStep2" class="mb-1">
+                            <i class="bi bi-circle"></i> <span>Загрузка требований...</span>
+                        </div>
+                        <div id="progressStep3" class="mb-1">
+                            <i class="bi bi-circle"></i> <span>Запуск алгоритма...</span>
+                        </div>
+                        <div id="progressStep4" class="mb-1">
+                            <i class="bi bi-circle"></i> <span>Обработка результатов...</span>
+                        </div>
+                        <div id="progressStep5" class="mb-1">
+                            <i class="bi bi-circle"></i> <span>Сохранение расписания...</span>
+                        </div>
+                    </div>
+                </div>
+                <div class="alert alert-info mt-3 mb-0" id="progressMessage">
+                    Пожалуйста, подождите. Генерация расписания может занять некоторое время...
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" id="cancelGenerationBtn" disabled>
+                    <i class="bi bi-x-circle"></i> Отмена
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Добавить урок -->
+<div class="modal fade" id="addLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить урок</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addLessonForm">
+                    <input type="hidden" id="lessonShiftId" value="{{ active_shift_id }}">
+                    <input type="hidden" id="lessonClassId">
+                    <div class="mb-3">
+                        <label for="lessonDayOfWeek" class="form-label">День недели *</label>
+                        <select class="form-select" id="lessonDayOfWeek" required>
+                            <option value="">Выберите день</option>
+                            <option value="1">Понедельник</option>
+                            <option value="2">Вторник</option>
+                            <option value="3">Среда</option>
+                            <option value="4">Четверг</option>
+                            <option value="5">Пятница</option>
+                            <option value="6">Суббота</option>
+                            <option value="7">Воскресенье</option>
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="lessonNumber" class="form-label">Номер урока *</label>
+                        <input type="number" class="form-control" id="lessonNumber" min="1" max="15" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="lessonSubject" class="form-label">Предмет *</label>
+                        <select class="form-select" id="lessonSubject" required>
+                            <option value="">Выберите предмет</option>
+                            {% for subj in subjects %}
+                                <option value="{{ subj.id }}">{{ subj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="lessonTeacher" class="form-label">Учитель *</label>
+                        <select class="form-select" id="lessonTeacher" required disabled>
+                            <option value="">Сначала выберите предмет</option>
+                        </select>
+                        <small class="text-muted">Список учителей обновится после выбора предмета</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="lessonCabinet" class="form-label">Кабинет *</label>
+                        <select class="form-select" id="lessonCabinet" required disabled>
+                            <option value="">Сначала выберите предмет, учителя, день и урок</option>
+                        </select>
+                        <small class="text-muted">Список кабинетов обновится после выбора всех параметров</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Добавить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Добавить урок во временное расписание -->
+<div class="modal fade" id="addTemporaryLessonModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить урок во временное расписание</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addTemporaryLessonForm">
+                    <input type="hidden" id="temporaryLessonDate">
+                    <input type="hidden" id="temporaryLessonShiftId">
+                    <input type="hidden" id="temporaryLessonClassId">
+                    <div class="mb-3">
+                        <label for="temporaryLessonNumber" class="form-label">Номер урока *</label>
+                        <input type="number" class="form-control" id="temporaryLessonNumber" min="1" max="15" required readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="temporaryLessonSubject" class="form-label">Предмет *</label>
+                        <select class="form-select" id="temporaryLessonSubject" required>
+                            <option value="">Выберите предмет</option>
+                            {% for subj in subjects %}
+                                <option value="{{ subj.id }}">{{ subj.name }}</option>
+                            {% endfor %}
+                        </select>
+                    </div>
+                    <div class="mb-3">
+                        <label for="temporaryLessonTeacher" class="form-label">Учитель *</label>
+                        <select class="form-select" id="temporaryLessonTeacher" required disabled>
+                            <option value="">Сначала выберите предмет</option>
+                        </select>
+                        <small class="text-muted">Список учителей обновится после выбора предмета</small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="temporaryLessonCabinet" class="form-label">Кабинет</label>
+                        <input type="text" class="form-control" id="temporaryLessonCabinet" maxlength="10">
+                        <small class="text-muted">Необязательно, но рекомендуется для различения подгрупп</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Добавить</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
+
+// Функционал изменения размера окон
+(function() {
+    const resizer = document.getElementById('resizer');
+    const schedulePanel = document.getElementById('schedulePanel');
+    const botPanel = document.getElementById('botPanel');
+    
+    if (!resizer || !schedulePanel || !botPanel) return;
+    
+    let isResizing = false;
+    let startX = 0;
+    let startScheduleWidth = 0;
+    let startBotWidth = 0;
+    
+    resizer.addEventListener('mousedown', function(e) {
+        isResizing = true;
+        resizer.classList.add('active');
+        startX = e.clientX;
+        startScheduleWidth = schedulePanel.offsetWidth;
+        startBotWidth = botPanel.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isResizing) return;
+        
+        const diff = e.clientX - startX;
+        const containerWidth = schedulePanel.parentElement.offsetWidth;
+        const resizerWidth = resizer.offsetWidth;
+        const availableWidth = containerWidth - resizerWidth;
+        
+        // Вычисляем новые ширины в процентах
+        const newScheduleWidth = ((startScheduleWidth + diff) / availableWidth) * 100;
+        const newBotWidth = ((startBotWidth - diff) / availableWidth) * 100;
+        
+        // Ограничиваем минимальную и максимальную ширину
+        const minWidth = 20; // 20% от общей ширины
+        const maxWidth = 80; // 80% от общей ширины
+        
+        if (newScheduleWidth >= minWidth && newScheduleWidth <= maxWidth) {
+            schedulePanel.style.flex = `0 0 ${newScheduleWidth}%`;
+            botPanel.style.flex = `0 0 ${newBotWidth}%`;
+        }
+    });
+    
+    document.addEventListener('mouseup', function() {
+        if (isResizing) {
+            isResizing = false;
+            resizer.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+})();
+
+// Функционал изменения размера чата по горизонтали
+(function() {
+    const chatResizer = document.getElementById('chatResizer');
+    const chatPanel = document.getElementById('chatPanel');
+    
+    if (!chatResizer || !chatPanel) return;
+    
+    let isResizing = false;
+    let startX = 0;
+    let startWidth = 0;
+    
+    chatResizer.addEventListener('mousedown', function(e) {
+        isResizing = true;
+        chatResizer.classList.add('active');
+        startX = e.clientX;
+        startWidth = chatPanel.offsetWidth;
+        document.body.style.cursor = 'col-resize';
+        document.body.style.userSelect = 'none';
+        e.preventDefault();
+    });
+    
+    document.addEventListener('mousemove', function(e) {
+        if (!isResizing) return;
+        
+        const diff = startX - e.clientX; // Инвертируем, т.к. разделитель слева
+        const container = chatPanel.parentElement;
+        const containerWidth = container.offsetWidth;
+        const resizerWidth = chatResizer.offsetWidth;
+        const availableWidth = containerWidth - resizerWidth;
+        
+        // Вычисляем новую ширину в процентах
+        const newWidth = ((startWidth + diff) / availableWidth) * 100;
+        
+        // Ограничиваем минимальную и максимальную ширину
+        const minWidth = 30; // 30% от общей ширины
+        const maxWidth = 95; // 95% от общей ширины
+        
+        if (newWidth >= minWidth && newWidth <= maxWidth) {
+            chatPanel.style.flex = `0 0 ${newWidth}%`;
+        }
+    });
+    
+    document.addEventListener('mouseup', function() {
+        if (isResizing) {
+            isResizing = false;
+            chatResizer.classList.remove('active');
+            document.body.style.cursor = '';
+            document.body.style.userSelect = '';
+        }
+    });
+})();
+
+// Функция для показа ошибки или сообщения с возможностью копирования
+function showError(message, title = 'Ошибка') {
+    const errorModal = document.getElementById('errorModal');
+    const errorText = document.getElementById('errorMessageText');
+    const modalTitle = document.getElementById('errorModalTitle');
+    const modalHeader = document.getElementById('errorModalHeader');
+    const copyBtn = document.getElementById('copyErrorBtn');
+    const closeBtn = errorModal.querySelector('.btn-close');
+    
+    // Определяем тип сообщения по заголовку
+    const isSuccess = title === 'Успех' || title.toLowerCase().includes('успех');
+    const isWarning = title === 'Предупреждение' || title.toLowerCase().includes('предупреждение');
+    
+    // Устанавливаем стиль заголовка
+    modalHeader.className = 'modal-header';
+    if (isSuccess) {
+        modalHeader.classList.add('bg-success', 'text-white');
+        modalTitle.innerHTML = `<i class="bi bi-check-circle"></i> ${title}`;
+        closeBtn.classList.add('btn-close-white');
+    } else if (isWarning) {
+        modalHeader.classList.add('bg-warning', 'text-dark');
+        modalTitle.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${title}`;
+        closeBtn.classList.remove('btn-close-white');
+    } else {
+        modalHeader.classList.add('bg-danger', 'text-white');
+        modalTitle.innerHTML = `<i class="bi bi-exclamation-triangle"></i> ${title}`;
+        closeBtn.classList.add('btn-close-white');
+    }
+    
+    errorText.value = message || 'Неизвестная ошибка';
+    
+    // Обработчик кнопки копирования
+    copyBtn.onclick = function() {
+        errorText.select();
+        errorText.setSelectionRange(0, 99999); // Для мобильных устройств
+        try {
+            document.execCommand('copy');
+            const originalText = copyBtn.innerHTML;
+            copyBtn.innerHTML = '<i class="bi bi-check"></i> Скопировано!';
+            copyBtn.classList.remove('btn-primary');
+            copyBtn.classList.add('btn-success');
+            setTimeout(() => {
+                copyBtn.innerHTML = originalText;
+                copyBtn.classList.remove('btn-success');
+                copyBtn.classList.add('btn-primary');
+            }, 2000);
+        } catch (err) {
+            // Fallback для современных браузеров
+            navigator.clipboard.writeText(errorText.value).then(() => {
+                const originalText = copyBtn.innerHTML;
+                copyBtn.innerHTML = '<i class="bi bi-check"></i> Скопировано!';
+                copyBtn.classList.remove('btn-primary');
+                copyBtn.classList.add('btn-success');
+                setTimeout(() => {
+                    copyBtn.innerHTML = originalText;
+                    copyBtn.classList.remove('btn-success');
+                    copyBtn.classList.add('btn-primary');
+                }, 2000);
+            }).catch(() => {
+                // Если не удалось скопировать, просто выделяем текст
+                errorText.focus();
+                errorText.select();
+            });
+        }
+    };
+    
+    const modal = new bootstrap.Modal(errorModal);
+    modal.show();
+}
+
+// Получаем данные из script-тега с JSON
+let currentShiftId = 0;
+let scheduleData = [];
+let lessonsCount = {};
+let classes = [];
+let teachers = [];
+let subjects = [];
+
+const scheduleDataScript = document.getElementById('scheduleInitialData');
+if (scheduleDataScript) {
+    try {
+        const initialData = JSON.parse(scheduleDataScript.textContent);
+        currentShiftId = initialData.shift_id || 0;
+        scheduleData = initialData.schedule_data || [];
+        lessonsCount = initialData.lessons_count || {};
+        classes = initialData.classes_list || [];
+        teachers = initialData.teachers_list || [];
+        subjects = initialData.subjects_list || [];
+        
+        console.log('Schedule data loaded:', {
+            shiftId: currentShiftId,
+            scheduleItems: scheduleData.length,
+            classesCount: classes.length,
+            teachersCount: teachers.length,
+            subjectsCount: subjects.length,
+            lessonsCountKeys: Object.keys(lessonsCount).length,
+            lessonsCount: lessonsCount
+        });
+        
+        // Если lessonsCount пустой, это проблема - нужно загрузить с сервера
+        if (Object.keys(lessonsCount).length === 0) {
+            console.warn('⚠️ lessonsCount пустой при инициализации! Загружаем с сервера...');
+        }
+        
+        // Пытаемся отобразить расписание сразу, если DOM готов
+        if (document.readyState === 'loading') {
+            // DOM еще не готов, ждем DOMContentLoaded
+            document.addEventListener('DOMContentLoaded', function() {
+                if (classes.length > 0 && Object.keys(lessonsCount).length > 0) {
+                    console.log('Rendering schedule after DOM ready (from initial data)');
+                    renderSchedule();
+                }
+            });
+        } else {
+            // DOM уже готов, отображаем сразу
+            if (classes.length > 0 && Object.keys(lessonsCount).length > 0) {
+                console.log('Rendering schedule immediately (DOM ready, initial data)');
+                setTimeout(() => renderSchedule(), 0);
+            }
+        }
+    } catch (e) {
+        console.error('Error parsing schedule initial data:', e);
+        // Используем значения по умолчанию
+        currentShiftId = 0;
+        scheduleData = [];
+        lessonsCount = {};
+        classes = [];
+        teachers = [];
+        subjects = [];
+    }
+} else {
+    console.warn('Schedule initial data script not found');
+}
+
+// Флаг для предотвращения бесконечного цикла при синхронизации селектов
+let isSyncingShifts = false;
+
+// Общая функция для активации смены и синхронизации всех элементов
+function activateShift(newShiftId, sourceElement, sourceName) {
+    if (!newShiftId || newShiftId === currentShiftId) {
+        return Promise.resolve(); // Не переключаем, если смена не изменилась
+    }
+    
+    // Предотвращаем бесконечный цикл
+    if (isSyncingShifts) {
+        console.log('⚠️ Синхронизация смен уже выполняется, пропускаем');
+        return Promise.resolve();
+    }
+    
+    console.log(`🔄 Переключение смены (${sourceName}): ${currentShiftId} -> ${newShiftId}`);
+    isSyncingShifts = true;
+    
+    // Активируем смену на сервере
+    return fetch(`/admin/shift/${newShiftId}/activate`, {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            console.log(`✅ Смена активирована (${sourceName}):`, data.message);
+            const oldShiftId = currentShiftId;
+            currentShiftId = newShiftId;
+            
+            // Синхронизируем shiftSelect (без вызова события change)
+            // Флаг isSyncingShifts уже установлен, поэтому обработчик не сработает
+            const shiftSelect = document.getElementById('shiftSelect');
+            if (shiftSelect && parseInt(shiftSelect.value) !== newShiftId) {
+                console.log(`🔄 Синхронизирую shiftSelect: ${shiftSelect.value} -> ${newShiftId}`);
+                // Устанавливаем значение программно (флаг isSyncingShifts предотвратит вызов обработчика)
+                shiftSelect.value = newShiftId;
+            }
+            
+            // Синхронизируем temporaryShiftSelect (без вызова события change)
+            const temporaryShiftSelect = document.getElementById('temporaryShiftSelect');
+            if (temporaryShiftSelect && parseInt(temporaryShiftSelect.value) !== newShiftId) {
+                console.log(`🔄 Синхронизирую temporaryShiftSelect: ${temporaryShiftSelect.value} -> ${newShiftId}`);
+                // Устанавливаем значение программно (флаг isSyncingShifts предотвратит вызов обработчика)
+                temporaryShiftSelect.value = newShiftId;
+            }
+            
+            // Обновляем temporaryShiftId
+            temporaryShiftId = newShiftId;
+            
+            // Обновляем скрытые поля
+            const lessonShiftIdField = document.getElementById('lessonShiftId');
+            if (lessonShiftIdField) {
+                lessonShiftIdField.value = newShiftId;
+            }
+            
+            const settingsShiftIdField = document.getElementById('settingsShiftId');
+            if (settingsShiftIdField) {
+                settingsShiftIdField.value = newShiftId;
+            }
+            
+            // Загружаем постоянное расписание
+            loadSchedule();
+            
+            // Если была выбрана дата, обновляем временное расписание
+            if (selectedDate) {
+                loadTemporarySchedule();
+            }
+            
+            // Диалог ИИ удален
+            
+            isSyncingShifts = false;
+        } else {
+            console.error('❌ Ошибка активации смены:', data.error);
+            showError('Ошибка при переключении смены: ' + (data.error || 'Неизвестная ошибка'));
+            // Возвращаем старое значение в исходный элемент
+            if (sourceElement) {
+                sourceElement.value = currentShiftId;
+            }
+            isSyncingShifts = false;
+            throw new Error(data.error || 'Неизвестная ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('❌ Ошибка при активации смены:', error);
+        showError('Ошибка при переключении смены: ' + error.message);
+        // Возвращаем старое значение в исходный элемент
+        if (sourceElement) {
+            sourceElement.value = currentShiftId;
+        }
+        isSyncingShifts = false;
+        throw error;
+    });
+}
+
+// Загрузка расписания при смене смены
+// Обработчик должен быть внутри DOMContentLoaded, чтобы элемент точно существовал
+document.addEventListener('DOMContentLoaded', function() {
+    const shiftSelect = document.getElementById('shiftSelect');
+    if (shiftSelect) {
+        console.log('✅ shiftSelect найден, привязываю обработчик');
+        shiftSelect.addEventListener('change', function() {
+            console.log('🔄 Событие change на shiftSelect, значение:', this.value);
+            // Пропускаем, если идет синхронизация
+            if (isSyncingShifts) {
+                console.log('⏸️ Пропускаем, идет синхронизация');
+                return;
+            }
+            const newShiftId = parseInt(this.value);
+            if (!newShiftId) {
+                console.warn('⚠️ Неверный ID смены:', this.value);
+                return;
+            }
+            console.log('🚀 Вызываю activateShift для shiftSelect, новая смена:', newShiftId);
+            activateShift(newShiftId, this, 'shiftSelect').catch(() => {
+                // Ошибка уже обработана в activateShift
+            });
+        });
+    } else {
+        console.warn('⚠️ Элемент shiftSelect не найден при загрузке DOM');
+        // Используем делегирование событий как резервный вариант
+        document.addEventListener('change', function(e) {
+            if (e.target && e.target.id === 'shiftSelect') {
+                console.log('🔄 Событие change на shiftSelect (через делегирование), значение:', e.target.value);
+                if (isSyncingShifts) {
+                    console.log('⏸️ Пропускаем, идет синхронизация');
+                    return;
+                }
+                const newShiftId = parseInt(e.target.value);
+                if (!newShiftId) {
+                    console.warn('⚠️ Неверный ID смены:', e.target.value);
+                    return;
+                }
+                console.log('🚀 Вызываю activateShift для shiftSelect (через делегирование), новая смена:', newShiftId);
+                activateShift(newShiftId, e.target, 'shiftSelect').catch(() => {
+                    // Ошибка уже обработана в activateShift
+                });
+            }
+        });
+        
+        // Попробуем найти его позже
+        setTimeout(function() {
+            const shiftSelectRetry = document.getElementById('shiftSelect');
+            if (shiftSelectRetry) {
+                console.log('✅ shiftSelect найден при повторной попытке, привязываю обработчик');
+                shiftSelectRetry.addEventListener('change', function() {
+                    console.log('🔄 Событие change на shiftSelect (повторная попытка), значение:', this.value);
+                    if (isSyncingShifts) {
+                        console.log('⏸️ Пропускаем, идет синхронизация');
+                        return;
+                    }
+                    const newShiftId = parseInt(this.value);
+                    if (!newShiftId) {
+                        console.warn('⚠️ Неверный ID смены:', this.value);
+                        return;
+                    }
+                    console.log('🚀 Вызываю activateShift для shiftSelect (повторная попытка), новая смена:', newShiftId);
+                    activateShift(newShiftId, this, 'shiftSelect').catch(() => {
+                        // Ошибка уже обработана в activateShift
+                    });
+                });
+            } else {
+                console.error('❌ Элемент shiftSelect не найден даже при повторной попытке');
+            }
+        }, 500);
+    }
+    
+    // Обработчик для temporaryShiftSelect
+    const temporaryShiftSelect = document.getElementById('temporaryShiftSelect');
+    if (temporaryShiftSelect) {
+        temporaryShiftSelect.addEventListener('change', function() {
+            // Пропускаем, если идет синхронизация
+            if (isSyncingShifts) {
+                return;
+            }
+            const newShiftId = parseInt(this.value);
+            if (!newShiftId) {
+                return;
+            }
+            
+            // Активируем смену и синхронизируем все элементы
+            activateShift(newShiftId, this, 'temporaryShiftSelect')
+                .then(() => {
+                    // Если дата не выбрана, пытаемся загрузить последнее расписание для новой смены
+                    if (!selectedDate) {
+                        autoLoadTemporaryScheduleIfExists();
+                    }
+                })
+                .catch(() => {
+                    // Ошибка уже обработана в activateShift
+                });
+        });
+    } else {
+        console.warn('⚠️ Элемент temporaryShiftSelect не найден');
+    }
+});
+
+// Загрузка расписания
+function loadSchedule() {
+    fetch(`/admin/schedule/data?shift_id=${currentShiftId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.schedule) {
+                scheduleData = data.schedule;
+            }
+            if (data.lessons_count) {
+                lessonsCount = data.lessons_count;
+            }
+            // Обновляем classes из данных, если они есть
+            const oldClassesIds = classes.map(c => c.id).sort().join(',');
+            const oldClassesLength = classes.length;
+            
+            if (data.classes && data.classes.length > 0) {
+                classes = data.classes;
+                const newClassesIds = classes.map(c => c.id).sort().join(',');
+                console.log(`📋 Классы обновлены: было ${oldClassesLength}, стало ${classes.length}`);
+                console.log(`📋 Старые ID классов: [${oldClassesIds}]`);
+                console.log(`📋 Новые ID классов: [${newClassesIds}]`);
+            }
+            console.log('Schedule loaded:', {
+                scheduleDataLength: scheduleData.length,
+                lessonsCount,
+                classesLength: classes.length,
+                classes: classes.map(c => c.name)
+            });
+            
+            // Детальное логирование для отладки
+            if (scheduleData.length > 0) {
+                console.log('📊 Статистика загруженного расписания:');
+                const classesInData = {};
+                scheduleData.forEach(item => {
+                    const classId = item.class_id;
+                    if (!classesInData[classId]) {
+                        classesInData[classId] = 0;
+                    }
+                    classesInData[classId]++;
+                });
+                console.log('   Распределение по классам:', classesInData);
+                console.log('   Все классы в данных:', Object.keys(classesInData).map(id => parseInt(id)));
+                console.log('   Все классы для отображения:', classes.map(c => c.id));
+            } else {
+                console.warn('⚠️ Расписание пустое!');
+            }
+            
+            // Обновляем заголовки таблицы, если классы изменились
+            const newClassesIds = classes.map(c => c.id).sort().join(',');
+            const classesChanged = oldClassesIds !== newClassesIds || oldClassesLength !== classes.length;
+            
+            // Всегда обновляем заголовки при переключении смены, даже если классы не изменились
+            // Это гарантирует, что заголовки всегда соответствуют текущей смене
+            console.log('🔄 Обновляю заголовки таблицы (классы изменились:', classesChanged, ')');
+            updateScheduleTableHeaders();
+            
+            renderSchedule();
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showError('Ошибка при загрузке расписания');
+        });
+}
+
+// Обновление заголовков таблицы расписания
+function updateScheduleTableHeaders() {
+    console.log('🔄 updateScheduleTableHeaders: начинаю обновление заголовков');
+    const thead = document.querySelector('#scheduleTable thead');
+    if (!thead) {
+        console.warn('⚠️ Заголовок таблицы не найден');
+        return;
+    }
+    
+    // Находим первую строку заголовка (с названиями классов)
+    const firstRow = thead.querySelector('tr:first-child');
+    // Находим вторую строку заголовка (с кнопками добавления)
+    const secondRow = thead.querySelector('tr:last-child');
+    
+    if (!firstRow || !secondRow) {
+        console.warn('⚠️ Строки заголовка не найдены');
+        return;
+    }
+    
+    console.log('📋 Текущие классы для заголовков:', classes.map(c => `${c.name} (ID: ${c.id})`));
+    
+    // Сохраняем первый столбец (День / Урок)
+    const firstCell = firstRow.querySelector('th:first-child');
+    const firstCellContent = firstCell ? firstCell.outerHTML : '';
+    
+    // Очищаем строки (кроме первого столбца)
+    firstRow.innerHTML = firstCellContent;
+    secondRow.innerHTML = '';
+    
+    // Добавляем заголовки для каждого класса
+    classes.forEach(cls => {
+        // Первая строка - название класса
+        const th1 = document.createElement('th');
+        th1.className = 'text-center';
+        th1.textContent = cls.name;
+        firstRow.appendChild(th1);
+        
+        // Вторая строка - кнопка добавления
+        const th2 = document.createElement('th');
+        th2.className = 'text-center';
+        th2.style.minWidth = '150px';
+        th2.innerHTML = `
+            <button class="btn btn-sm btn-outline-primary add-lesson-to-class-btn" 
+                    data-class-id="${cls.id}"
+                    title="Добавить урок">
+                <i class="bi bi-plus"></i>
+            </button>
+        `;
+        secondRow.appendChild(th2);
+    });
+    
+    // Перепривязываем обработчики для кнопок добавления
+    document.querySelectorAll('.add-lesson-to-class-btn').forEach(btn => {
+        // Удаляем старые обработчики
+        const newBtn = btn.cloneNode(true);
+        btn.parentNode.replaceChild(newBtn, btn);
+        
+        // Добавляем новый обработчик
+        newBtn.addEventListener('click', function() {
+            const classId = parseInt(this.getAttribute('data-class-id'));
+            // Открываем модальное окно без указания дня и урока (пользователь выберет сам)
+            // Используем day=0 и lesson=0 как индикатор, что нужно выбрать
+            openAddLessonModal(0, 0, classId);
+        });
+    });
+    
+    console.log('✅ Заголовки таблицы обновлены для', classes.length, 'классов:', classes.map(c => c.name));
+}
+
+// Отрисовка таблицы расписания
+function renderSchedule() {
+    const tbody = document.getElementById('scheduleTableBody');
+    if (!tbody) {
+        console.error('Schedule table body not found');
+        return;
+    }
+    tbody.innerHTML = '';
+    
+    if (!classes || classes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="100%" class="text-center text-muted">Нет классов для отображения</td></tr>';
+        return;
+    }
+    
+    // Проверяем, есть ли настройки уроков
+    if (!lessonsCount || Object.keys(lessonsCount).length === 0) {
+        console.warn('⚠️ renderSchedule: lessonsCount пустой, загружаем данные...');
+        loadSchedule();
+        return;
+    }
+    
+    console.log('🔄 renderSchedule: начинаем отрисовку', {
+        classesCount: classes.length,
+        lessonsCountKeys: Object.keys(lessonsCount).length,
+        scheduleItems: scheduleData.length
+    });
+    
+    // Группируем по дням
+    for (let day = 1; day <= 7; day++) {
+        const dayName = DAYS[day - 1];
+        const maxLessons = lessonsCount[day] || 0;
+        
+        // Пропускаем день, если количество уроков = 0
+        if (maxLessons === 0) {
+            continue;
+        }
+        
+        // Заголовок дня
+        const dayRow = document.createElement('tr');
+        dayRow.className = 'table-primary';
+        const dayCell = document.createElement('td');
+        dayCell.colSpan = classes.length + 1;
+        dayCell.innerHTML = `<strong>${dayName}</strong>`;
+        dayRow.appendChild(dayCell);
+        tbody.appendChild(dayRow);
+        
+        // Уроки дня
+        for (let lesson = 1; lesson <= maxLessons; lesson++) {
+            const row = document.createElement('tr');
+            const lessonCell = document.createElement('td');
+            lessonCell.className = 'text-center fw-bold';
+            lessonCell.textContent = lesson;
+            row.appendChild(lessonCell);
+            
+            // Ячейки для каждого класса
+            classes.forEach(cls => {
+                const cell = document.createElement('td');
+                cell.className = 'text-center';
+                cell.style.minWidth = '150px';
+                
+                // Ищем все уроки для этого класса и дня (может быть несколько подгрупп)
+                // ВАЖНО: Проверяем типы, так как class_id может быть строкой или числом
+                const lessonsForCell = scheduleData.filter(item => {
+                    const itemClassId = typeof item.class_id === 'string' ? parseInt(item.class_id) : item.class_id;
+                    const clsId = typeof cls.id === 'string' ? parseInt(cls.id) : cls.id;
+                    return item.day_of_week === day && 
+                           item.lesson_number === lesson && 
+                           itemClassId === clsId;
+                });
+                
+                // Отладочное логирование для первых нескольких ячеек
+                if (day === 1 && lesson === 1 && cls.id === 3) {
+                    console.log(`🔍 Отладка для класса ${cls.name} (ID ${cls.id}), день ${day}, урок ${lesson}:`);
+                    console.log(`   Найдено уроков: ${lessonsForCell.length}`);
+                    console.log(`   Всего данных в scheduleData: ${scheduleData.length}`);
+                    const relevantItems = scheduleData.filter(item => {
+                        const itemClassId = typeof item.class_id === 'string' ? parseInt(item.class_id) : item.class_id;
+                        return itemClassId === cls.id;
+                    });
+                    console.log(`   Всего уроков для этого класса: ${relevantItems.length}`);
+                    if (relevantItems.length > 0) {
+                        console.log(`   Примеры:`, relevantItems.slice(0, 3));
+                    }
+                }
+                
+                if (lessonsForCell.length > 0) {
+                    // Группируем по предметам для лучшего отображения подгрупп
+                    const lessonsBySubject = {};
+                    lessonsForCell.forEach(lessonItem => {
+                        const key = lessonItem.subject_name;
+                        if (!lessonsBySubject[key]) {
+                            lessonsBySubject[key] = [];
+                        }
+                        lessonsBySubject[key].push(lessonItem);
+                    });
+                    
+                    let cellContent = '<div class="small">';
+                    let subjectIndex = 0;
+                    Object.keys(lessonsBySubject).forEach(subjectName => {
+                        const subjectLessons = lessonsBySubject[subjectName];
+                        // Добавляем разделитель между предметами (gap создаст нужное расстояние)
+                        if (subjectIndex > 0) cellContent += '<hr>';
+                        
+                        // Если несколько учителей по одному предмету - это подгруппы
+                        if (subjectLessons.length > 1) {
+                            cellContent += `<div><strong>${subjectName}</strong> <span class="badge bg-info">Подгруппы</span></div>`;
+                        } else {
+                            cellContent += `<div><strong>${subjectName}</strong></div>`;
+                        }
+                        
+                        subjectLessons.forEach((lessonItem, index) => {
+                            const cabinet = lessonItem.cabinet && lessonItem.cabinet.trim() && lessonItem.cabinet !== '-' 
+                                ? lessonItem.cabinet 
+                                : '-';
+                            cellContent += `
+                                <div class="d-flex justify-content-between align-items-center">
+                                    <span>${lessonItem.teacher_name} <small class="text-muted">(${cabinet})</small></span>
+                                    <button class="btn btn-sm btn-danger delete-lesson-btn" data-lesson-id="${lessonItem.id}" title="Удалить">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </div>
+                            `;
+                        });
+                        subjectIndex++;
+                    });
+                    cellContent += '</div>';
+                    
+                    // Проверяем, есть ли подгруппы (несколько учителей по одному предмету)
+                    let hasSubgroups = false;
+                    Object.keys(lessonsBySubject).forEach(subjectName => {
+                        if (lessonsBySubject[subjectName].length > 1) {
+                            hasSubgroups = true;
+                        }
+                    });
+                    
+                    // Если есть подгруппы, показываем специальную кнопку для добавления еще одной подгруппы
+                    if (hasSubgroups) {
+                        cellContent += `
+                            <button class="btn btn-sm btn-outline-info add-lesson-btn w-100" 
+                                    data-day="${day}" 
+                                    data-lesson="${lesson}" 
+                                    data-class-id="${cls.id}"
+                                    title="Добавить еще одного учителя в подгруппу">
+                                <i class="bi bi-person-plus"></i> Добавить в подгруппу
+                            </button>
+                        `;
+                    } else {
+                        cellContent += `
+                            <button class="btn btn-sm btn-outline-primary add-lesson-btn w-100" 
+                                    data-day="${day}" 
+                                    data-lesson="${lesson}" 
+                                    data-class-id="${cls.id}"
+                                    title="Добавить урок или подгруппу">
+                                <i class="bi bi-plus"></i> Добавить урок
+                            </button>
+                        `;
+                    }
+                    cell.innerHTML = cellContent;
+                } else {
+                    cell.innerHTML = `
+                        <button class="btn btn-sm btn-outline-secondary add-lesson-btn" 
+                                data-day="${day}" 
+                                data-lesson="${lesson}" 
+                                data-class-id="${cls.id}"
+                                title="Добавить урок">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    `;
+                }
+                
+                row.appendChild(cell);
+            });
+            
+            tbody.appendChild(row);
+        }
+    }
+}
+
+// Добавление урока (используется через делегирование событий)
+function openAddLessonModal(day, lesson, classId) {
+    // Сбрасываем форму
+    document.getElementById('addLessonForm').reset();
+    
+    document.getElementById('lessonDayOfWeek').value = day;
+    document.getElementById('lessonNumber').value = lesson;
+    document.getElementById('lessonClassId').value = classId;
+    document.getElementById('lessonShiftId').value = currentShiftId;
+    
+    // Сбрасываем список учителей
+    document.getElementById('lessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+    document.getElementById('lessonTeacher').disabled = true;
+    
+    // Сбрасываем список кабинетов
+    document.getElementById('lessonCabinet').innerHTML = '<option value="">Сначала выберите предмет, учителя, день и урок</option>';
+    document.getElementById('lessonCabinet').disabled = true;
+    
+    // Проверяем, есть ли уже уроки в этой ячейке для подсказки о подгруппах
+    const existingLessons = scheduleData.filter(item => 
+        item.day_of_week === day && 
+        item.lesson_number === lesson && 
+        item.class_id === classId
+    );
+    
+    // Если есть уроки, группируем по предметам
+    const lessonsBySubject = {};
+    existingLessons.forEach(lessonItem => {
+        const key = lessonItem.subject_name;
+        if (!lessonsBySubject[key]) {
+            lessonsBySubject[key] = [];
+        }
+        lessonsBySubject[key].push(lessonItem);
+    });
+    
+    // Если есть предмет с несколькими учителями - это подгруппы, предзаполняем предмет
+    let suggestedSubjectId = null;
+    Object.keys(lessonsBySubject).forEach(subjectName => {
+        const subjectLessons = lessonsBySubject[subjectName];
+        if (subjectLessons.length > 0 && !suggestedSubjectId) {
+            // Находим ID предмета по имени
+            const subject = subjects.find(s => s.name === subjectName);
+            if (subject) {
+                suggestedSubjectId = subject.id;
+            }
+        }
+    });
+    
+    // Если нашли предмет для подгруппы, предзаполняем его
+    if (suggestedSubjectId) {
+        document.getElementById('lessonSubject').value = suggestedSubjectId;
+        // Загружаем учителей для этого предмета
+        loadTeachersForSubject(suggestedSubjectId, classId).then(() => {
+            // После загрузки учителей обновляем кабинеты, если все поля заполнены
+            loadAvailableCabinets();
+        });
+    }
+    
+    // Обновляем заголовок модального окна
+    const modalTitle = document.querySelector('#addLessonModal .modal-title');
+    if (existingLessons.length > 0) {
+        modalTitle.textContent = 'Добавить урок или подгруппу';
+    } else {
+        modalTitle.textContent = 'Добавить урок';
+    }
+    
+    const modal = new bootstrap.Modal(document.getElementById('addLessonModal'));
+    modal.show();
+}
+
+// Удаление урока (используется через делегирование событий)
+function deleteLessonById(lessonId) {
+    if (!confirm('Вы уверены, что хотите удалить этот урок?')) {
+        return;
+    }
+    
+    fetch(`/admin/schedule/permanent/delete/${lessonId}`, {
+        method: 'POST'
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            loadSchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при удалении урока');
+    });
+}
+
+// Делегирование событий для динамически созданных кнопок
+document.addEventListener('click', function(e) {
+    // Обработка кнопки добавления урока
+    if (e.target.closest('.add-lesson-btn')) {
+        const btn = e.target.closest('.add-lesson-btn');
+        const day = parseInt(btn.getAttribute('data-day'));
+        const lesson = parseInt(btn.getAttribute('data-lesson'));
+        const classId = parseInt(btn.getAttribute('data-class-id'));
+        openAddLessonModal(day, lesson, classId);
+    }
+    
+    // Обработка кнопки добавления урока к классу (в заголовке)
+    if (e.target.closest('.add-lesson-to-class-btn')) {
+        const btn = e.target.closest('.add-lesson-to-class-btn');
+        const classId = parseInt(btn.getAttribute('data-class-id'));
+        // Сбрасываем форму
+        document.getElementById('addLessonForm').reset();
+        document.getElementById('lessonClassId').value = classId;
+        document.getElementById('lessonShiftId').value = currentShiftId;
+        // Сбрасываем список учителей
+        document.getElementById('lessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+        document.getElementById('lessonTeacher').disabled = true;
+        // Сбрасываем список кабинетов
+        document.getElementById('lessonCabinet').innerHTML = '<option value="">Сначала выберите предмет, учителя, день и урок</option>';
+        document.getElementById('lessonCabinet').disabled = true;
+        const modal = new bootstrap.Modal(document.getElementById('addLessonModal'));
+        modal.show();
+    }
+    
+    // Обработка кнопки удаления урока
+    if (e.target.closest('.delete-lesson-btn')) {
+        const btn = e.target.closest('.delete-lesson-btn');
+        const lessonId = parseInt(btn.getAttribute('data-lesson-id'));
+        deleteLessonById(lessonId);
+    }
+});
+
+// Функция для загрузки учителей по предмету
+function loadTeachersForSubject(subjectId, classId = null) {
+    const teacherSelect = document.getElementById('lessonTeacher');
+    
+    if (!subjectId) {
+        teacherSelect.innerHTML = '<option value="">Сначала выберите предмет</option>';
+        teacherSelect.disabled = true;
+        return;
+    }
+    
+    // Показываем загрузку
+    teacherSelect.innerHTML = '<option value="">Загрузка...</option>';
+    teacherSelect.disabled = true;
+    
+    // Получаем class_id из скрытого поля (устанавливается при открытии модального окна)
+    if (!classId) {
+        classId = document.getElementById('lessonClassId') ? document.getElementById('lessonClassId').value : null;
+    }
+    
+    // Загружаем учителей для выбранного предмета
+    // Для постоянного расписания фильтруем по классу (только учителя, привязанные к классу)
+    // Получаем shift_id из скрытого поля или используем currentShiftId
+    const shiftId = document.getElementById('lessonShiftId') ? document.getElementById('lessonShiftId').value : currentShiftId;
+    let url = `/admin/schedule/teachers/${subjectId}`;
+    const params = [];
+    if (shiftId) {
+        params.push(`shift_id=${shiftId}`);
+    }
+    if (classId) {
+        params.push(`class_id=${classId}`);
+    }
+    if (params.length > 0) {
+        url += `?${params.join('&')}`;
+    }
+    return fetch(url)
+        .then(r => r.json())
+        .then(data => {
+            teacherSelect.innerHTML = '<option value="">Выберите учителя</option>';
+            
+            if (data.teachers && data.teachers.length > 0) {
+                data.teachers.forEach(teacher => {
+                    const option = document.createElement('option');
+                    option.value = teacher.id;
+                    option.textContent = teacher.name;
+                    teacherSelect.appendChild(option);
+                });
+                teacherSelect.disabled = false;
+            } else {
+                teacherSelect.innerHTML = '<option value="">Нет учителей для этого предмета</option>';
+                teacherSelect.disabled = true;
+            }
+            return data;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            teacherSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+            teacherSelect.disabled = true;
+            throw error;
+        });
+}
+
+// Функция для загрузки доступных кабинетов
+function loadAvailableCabinets() {
+    const cabinetSelect = document.getElementById('lessonCabinet');
+    const shiftId = document.getElementById('lessonShiftId') ? document.getElementById('lessonShiftId').value : null;
+    const subjectId = document.getElementById('lessonSubject') ? document.getElementById('lessonSubject').value : null;
+    const teacherId = document.getElementById('lessonTeacher') ? document.getElementById('lessonTeacher').value : null;
+    const classId = document.getElementById('lessonClassId') ? document.getElementById('lessonClassId').value : null;
+    const dayOfWeek = document.getElementById('lessonDayOfWeek') ? document.getElementById('lessonDayOfWeek').value : null;
+    const lessonNumber = document.getElementById('lessonNumber') ? document.getElementById('lessonNumber').value : null;
+    
+    // Проверяем, что все поля заполнены
+    if (!shiftId || !subjectId || !teacherId || !classId || !dayOfWeek || !lessonNumber) {
+        cabinetSelect.innerHTML = '<option value="">Сначала выберите предмет, учителя, день и урок</option>';
+        cabinetSelect.disabled = true;
+        return;
+    }
+    
+    // Показываем загрузку
+    cabinetSelect.innerHTML = '<option value="">Загрузка...</option>';
+    cabinetSelect.disabled = true;
+    
+    // Загружаем доступные кабинеты
+    const params = new URLSearchParams({
+        shift_id: shiftId,
+        subject_id: subjectId,
+        teacher_id: teacherId,
+        class_id: classId,
+        day_of_week: dayOfWeek,
+        lesson_number: lessonNumber
+    });
+    
+    fetch(`/admin/schedule/cabinets/available?${params}`)
+        .then(r => r.json())
+        .then(data => {
+            cabinetSelect.innerHTML = '<option value="">Выберите кабинет</option>';
+            
+            if (data.cabinets && data.cabinets.length > 0) {
+                data.cabinets.forEach(cabinet => {
+                    const option = document.createElement('option');
+                    option.value = cabinet.name;
+                    option.textContent = cabinet.name;
+                    cabinetSelect.appendChild(option);
+                });
+                cabinetSelect.disabled = false;
+            } else {
+                cabinetSelect.innerHTML = '<option value="">Нет доступных кабинетов</option>';
+                cabinetSelect.disabled = true;
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            cabinetSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+            cabinetSelect.disabled = true;
+        });
+}
+
+// Обновление списка учителей при выборе предмета (используем делегирование событий)
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'lessonSubject') {
+        const classId = document.getElementById('lessonClassId') ? document.getElementById('lessonClassId').value : null;
+        loadTeachersForSubject(e.target.value, classId).then(() => {
+            // После загрузки учителей обновляем кабинеты
+            loadAvailableCabinets();
+        });
+    }
+    
+    // Обновляем кабинеты при изменении учителя, дня или урока
+    if (e.target && (e.target.id === 'lessonTeacher' || e.target.id === 'lessonDayOfWeek' || e.target.id === 'lessonNumber')) {
+        loadAvailableCabinets();
+    }
+});
+
+// Форма добавления урока
+document.getElementById('addLessonForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const data = {
+        shift_id: parseInt(document.getElementById('lessonShiftId').value),
+        day_of_week: parseInt(document.getElementById('lessonDayOfWeek').value),
+        lesson_number: parseInt(document.getElementById('lessonNumber').value),
+        class_id: parseInt(document.getElementById('lessonClassId').value),
+        subject_id: parseInt(document.getElementById('lessonSubject').value),
+        teacher_id: parseInt(document.getElementById('lessonTeacher').value),
+        cabinet: document.getElementById('lessonCabinet').value || null
+    };
+
+    fetch('/admin/schedule/permanent/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addLessonModal')).hide();
+            // Очищаем форму
+            document.getElementById('addLessonForm').reset();
+            // Сбрасываем список учителей
+            document.getElementById('lessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+            document.getElementById('lessonTeacher').disabled = true;
+            // Сбрасываем список кабинетов
+            document.getElementById('lessonCabinet').innerHTML = '<option value="">Сначала выберите предмет, учителя, день и урок</option>';
+            document.getElementById('lessonCabinet').disabled = true;
+            
+            // Если были автоматически добавлены подгруппы, показываем сообщение
+            if (result.added_subgroups && result.added_subgroups.length > 0) {
+                const subgroupsList = result.added_subgroups.map(sg => 
+                    `• ${sg.teacher_name} (кабинет: ${sg.cabinet})`
+                ).join('\n');
+                const message = `Урок добавлен!\n\nАвтоматически добавлены остальные подгруппы (${result.added_subgroups.length} шт.):\n${subgroupsList}`;
+                alert(message); // Можно заменить на более красивое модальное окно
+            }
+            
+            loadSchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при добавлении урока');
+    });
+});
+
+// Форма добавления смены
+document.getElementById('addShiftForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const data = {
+        name: document.getElementById('shiftName').value.trim()
+    };
+
+    fetch('/admin/schedule/shift/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addShiftModal')).hide();
+            location.reload();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при создании смены');
+    });
+});
+
+// Форма настроек
+document.getElementById('settingsForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const shiftId = parseInt(document.getElementById('settingsShiftId').value);
+    const settings = {};
+    
+    for (let day = 1; day <= 7; day++) {
+        settings[day] = parseInt(document.getElementById(`lessons_${day}`).value);
+    }
+
+    fetch('/admin/schedule/settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            shift_id: shiftId,
+            settings: settings
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            // Обновляем lessonsCount из формы перед загрузкой
+            for (let day = 1; day <= 7; day++) {
+                lessonsCount[day] = parseInt(document.getElementById(`lessons_${day}`).value);
+            }
+            bootstrap.Modal.getInstance(document.getElementById('settingsModal')).hide();
+            loadSchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при сохранении настроек');
+    });
+});
+
+// ========== ВРЕМЕННОЕ РАСПИСАНИЕ ==========
+
+let temporaryScheduleData = [];
+let selectedDate = null;
+let temporaryShiftId = 0;
+
+// Функция для автоматической загрузки расписания, если оно есть
+function autoLoadTemporaryScheduleIfExists() {
+    temporaryShiftId = parseInt(document.getElementById('temporaryShiftSelect').value);
+    
+    fetch(`/admin/schedule/temporary/latest-date?shift_id=${temporaryShiftId}`)
+        .then(r => r.json())
+        .then(data => {
+            if (data.has_schedule && data.date) {
+                // Устанавливаем дату и загружаем расписание
+                selectedDate = data.date;
+                document.getElementById('temporaryDate').value = data.date;
+                temporaryShiftId = parseInt(document.getElementById('temporaryShiftSelect').value);
+                document.getElementById('copyFromPermanentBtn').disabled = false;
+                document.querySelectorAll('.add-temporary-lesson-to-class-btn').forEach(btn => btn.disabled = false);
+                loadTemporarySchedule();
+            }
+        })
+        .catch(error => {
+            console.error('Error checking for temporary schedule:', error);
+        });
+}
+
+// Обработчик переключения вкладок
+document.addEventListener('DOMContentLoaded', function() {
+    const scheduleTabs = document.querySelectorAll('#scheduleTabs button[data-bs-toggle="tab"]');
+    scheduleTabs.forEach(tab => {
+        tab.addEventListener('shown.bs.tab', function(event) {
+            const targetId = event.target.getAttribute('data-bs-target');
+            if (targetId === '#temporary-schedule') {
+                // При переключении на вкладку временного расписания
+                // Проверяем, есть ли уже выбранная дата
+                if (!selectedDate) {
+                    // Если дата не выбрана, пытаемся загрузить последнее расписание
+                    autoLoadTemporaryScheduleIfExists();
+                } else {
+                    // Если дата уже выбрана, просто загружаем расписание
+                    loadTemporarySchedule();
+                }
+            } else if (targetId === '#permanent-schedule') {
+                // При переключении на вкладку постоянного расписания
+                // Убеждаемся, что расписание отображено
+                if (scheduleData && scheduleData.length > 0) {
+                    renderSchedule();
+                } else {
+                    // Если данных нет, загружаем их
+                    loadSchedule();
+                }
+            }
+        });
+    });
+    
+    // При загрузке страницы проверяем наличие расписания
+    // Если открыта вкладка временного расписания, загружаем его
+    const activeTab = document.querySelector('#scheduleTabs button.active');
+    if (activeTab && activeTab.getAttribute('data-bs-target') === '#temporary-schedule') {
+        autoLoadTemporaryScheduleIfExists();
+    }
+});
+
+// Инициализация временного расписания
+document.getElementById('temporaryDate').addEventListener('change', function() {
+    selectedDate = this.value;
+    // Активируем кнопки при выборе даты
+    const copyBtn = document.getElementById('copyFromPermanentBtn');
+    const sendBtn = document.getElementById('sendTemporaryTelegramBtn');
+    const exportBtn = document.getElementById('exportTemporaryScheduleBtn');
+    if (selectedDate) {
+        if (copyBtn) copyBtn.disabled = false;
+        if (sendBtn) sendBtn.disabled = false;
+        if (exportBtn) exportBtn.disabled = false;
+    } else {
+        if (copyBtn) copyBtn.disabled = true;
+        if (sendBtn) sendBtn.disabled = true;
+        if (exportBtn) exportBtn.disabled = true;
+    }
+    if (selectedDate) {
+        temporaryShiftId = parseInt(document.getElementById('temporaryShiftSelect').value);
+        document.getElementById('copyFromPermanentBtn').disabled = false;
+        document.querySelectorAll('.add-temporary-lesson-to-class-btn').forEach(btn => btn.disabled = false);
+        loadTemporarySchedule();
+    } else {
+        document.getElementById('copyFromPermanentBtn').disabled = true;
+        document.querySelectorAll('.add-temporary-lesson-to-class-btn').forEach(btn => btn.disabled = true);
+        temporaryScheduleData = [];
+        renderTemporarySchedule();
+    }
+});
+
+// Обработчик temporaryShiftSelect теперь находится в DOMContentLoaded выше
+
+// Загрузка временного расписания
+function loadTemporarySchedule() {
+    if (!selectedDate) return;
+    
+    fetch(`/admin/schedule/temporary/data?date=${selectedDate}&shift_id=${temporaryShiftId}`)
+        .then(r => r.json())
+        .then(data => {
+            temporaryScheduleData = data.schedule || [];
+            renderTemporarySchedule();
+        })
+        .catch(error => {
+            console.error('Error loading temporary schedule:', error);
+            showError('Ошибка при загрузке временного расписания');
+        });
+}
+
+// Отрисовка временного расписания
+function renderTemporarySchedule() {
+    const tbody = document.getElementById('temporaryScheduleTableBody');
+    if (!tbody) return;
+    
+    tbody.innerHTML = '';
+    
+    if (!selectedDate) {
+        tbody.innerHTML = '<tr><td colspan="100%" class="text-center text-muted">Выберите дату для отображения временного расписания</td></tr>';
+        return;
+    }
+    
+    if (!classes || classes.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="100%" class="text-center text-muted">Нет классов для отображения</td></tr>';
+        return;
+    }
+    
+    // Определяем день недели для выбранной даты
+    const dateObj = new Date(selectedDate);
+    const dayOfWeek = dateObj.getDay(); // 0 = воскресенье, 1 = понедельник, ...
+    const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek; // Преобразуем в формат 1-7 (понедельник-воскресенье)
+    
+    // Получаем количество уроков для этого дня из постоянного расписания
+    fetch(`/admin/schedule/data?shift_id=${temporaryShiftId}`)
+        .then(r => r.json())
+        .then(data => {
+            const maxLessons = data.lessons_count && data.lessons_count[dayNumber] ? data.lessons_count[dayNumber] : 6;
+            
+            if (maxLessons === 0) {
+                tbody.innerHTML = '<tr><td colspan="100%" class="text-center text-muted">В этот день нет уроков</td></tr>';
+                return;
+            }
+            
+            // Создаем строки для каждого урока
+            for (let lesson = 1; lesson <= maxLessons; lesson++) {
+                const row = document.createElement('tr');
+                const lessonCell = document.createElement('td');
+                lessonCell.className = 'text-center fw-bold';
+                lessonCell.textContent = lesson;
+                row.appendChild(lessonCell);
+                
+                // Ячейки для каждого класса
+                classes.forEach(cls => {
+                    const cell = document.createElement('td');
+                    cell.className = 'text-center';
+                    cell.style.minWidth = '150px';
+                    
+                    // Ищем все уроки для этого класса и урока (может быть несколько подгрупп)
+                    const lessonsForCell = temporaryScheduleData.filter(item => 
+                        item.lesson_number === lesson && 
+                        item.class_id === cls.id
+                    );
+                    
+                    if (lessonsForCell.length > 0) {
+                        // Группируем по предметам для лучшего отображения подгрупп (как в постоянном расписании)
+                        const lessonsBySubject = {};
+                        lessonsForCell.forEach(lessonItem => {
+                            const key = lessonItem.subject_name;
+                            if (!lessonsBySubject[key]) {
+                                lessonsBySubject[key] = [];
+                            }
+                            lessonsBySubject[key].push(lessonItem);
+                        });
+                        
+                        let cellContent = '<div class="small">';
+                        let subjectIndex = 0;
+                        Object.keys(lessonsBySubject).forEach(subjectName => {
+                            const subjectLessons = lessonsBySubject[subjectName];
+                            // Добавляем разделитель между предметами (gap создаст нужное расстояние)
+                            if (subjectIndex > 0) cellContent += '<hr>';
+                            
+                            // Если несколько учителей по одному предмету - это подгруппы
+                            if (subjectLessons.length > 1) {
+                                cellContent += `<div><strong>${subjectName}</strong> <span class="badge bg-info">Подгруппы</span></div>`;
+                            } else {
+                                cellContent += `<div><strong>${subjectName}</strong></div>`;
+                            }
+                            
+                            subjectLessons.forEach((lessonItem, index) => {
+                                const cabinet = lessonItem.cabinet && lessonItem.cabinet.trim() && lessonItem.cabinet !== '-' 
+                                    ? lessonItem.cabinet 
+                                    : '-';
+                                cellContent += `
+                                    <div class="d-flex justify-content-between align-items-center">
+                                        <span>${lessonItem.teacher_name} <small class="text-muted">(${cabinet})</small></span>
+                                        <button class="btn btn-sm btn-danger delete-temporary-lesson-btn" data-lesson-id="${lessonItem.id}" title="Удалить">
+                                            <i class="bi bi-trash"></i>
+                                        </button>
+                                    </div>
+                                `;
+                            });
+                            subjectIndex++;
+                        });
+                        cellContent += '</div>';
+                        
+                        // Проверяем, есть ли подгруппы (несколько учителей по одному предмету)
+                        let hasSubgroups = false;
+                        Object.keys(lessonsBySubject).forEach(subjectName => {
+                            if (lessonsBySubject[subjectName].length > 1) {
+                                hasSubgroups = true;
+                            }
+                        });
+                        
+                        // Если есть подгруппы, показываем специальную кнопку для добавления еще одной подгруппы
+                        if (hasSubgroups) {
+                            cellContent += `
+                                <button class="btn btn-sm btn-outline-info add-temporary-lesson-btn w-100" 
+                                        data-lesson="${lesson}" 
+                                        data-class-id="${cls.id}"
+                                        title="Добавить еще одного учителя в подгруппу">
+                                    <i class="bi bi-person-plus"></i> Добавить в подгруппу
+                                </button>
+                            `;
+                        } else {
+                            cellContent += `
+                                <button class="btn btn-sm btn-outline-primary add-temporary-lesson-btn" 
+                                        data-lesson="${lesson}" 
+                                        data-class-id="${cls.id}"
+                                        title="Добавить урок">
+                                    <i class="bi bi-plus"></i>
+                                </button>
+                            `;
+                        }
+                        cell.innerHTML = cellContent;
+                    } else {
+                        cell.innerHTML = `
+                            <button class="btn btn-sm btn-outline-secondary add-temporary-lesson-btn" 
+                                    data-lesson="${lesson}" 
+                                    data-class-id="${cls.id}"
+                                    title="Добавить урок">
+                                <i class="bi bi-plus"></i>
+                            </button>
+                        `;
+                    }
+                    
+                    row.appendChild(cell);
+                });
+                
+                tbody.appendChild(row);
+            }
+        })
+        .catch(error => {
+            console.error('Error loading lessons count:', error);
+            // Используем значение по умолчанию
+            const maxLessons = 6;
+            for (let lesson = 1; lesson <= maxLessons; lesson++) {
+                const row = document.createElement('tr');
+                const lessonCell = document.createElement('td');
+                lessonCell.className = 'text-center fw-bold';
+                lessonCell.textContent = lesson;
+                row.appendChild(lessonCell);
+                
+                classes.forEach(cls => {
+                    const cell = document.createElement('td');
+                    cell.className = 'text-center';
+                    cell.style.minWidth = '150px';
+                    cell.innerHTML = `
+                        <button class="btn btn-sm btn-outline-secondary add-temporary-lesson-btn" 
+                                data-lesson="${lesson}" 
+                                data-class-id="${cls.id}"
+                                title="Добавить урок">
+                            <i class="bi bi-plus"></i>
+                        </button>
+                    `;
+                    row.appendChild(cell);
+                });
+                
+                tbody.appendChild(row);
+            }
+        });
+}
+
+// Копирование из постоянного расписания
+document.getElementById('copyFromPermanentBtn').addEventListener('click', function() {
+    if (!selectedDate) {
+        showError('Выберите дату', 'Предупреждение');
+        return;
+    }
+    
+    if (!confirm('Копировать расписание из постоянного? Существующие записи для этой даты будут удалены.')) {
+        return;
+    }
+    
+    const dateObj = new Date(selectedDate);
+    const dayOfWeek = dateObj.getDay();
+    const dayNumber = dayOfWeek === 0 ? 7 : dayOfWeek;
+    
+    fetch('/admin/schedule/temporary/copy', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            date: selectedDate,
+            shift_id: temporaryShiftId,
+            day_of_week: dayNumber
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            loadTemporarySchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при копировании расписания');
+    });
+});
+
+// Открытие модального окна для добавления урока во временное расписание
+function openAddTemporaryLessonModal(lesson, classId) {
+    document.getElementById('addTemporaryLessonForm').reset();
+    document.getElementById('temporaryLessonNumber').value = lesson;
+    document.getElementById('temporaryLessonClassId').value = classId;
+    document.getElementById('temporaryLessonDate').value = selectedDate;
+    document.getElementById('temporaryLessonShiftId').value = temporaryShiftId;
+    
+    document.getElementById('temporaryLessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+    document.getElementById('temporaryLessonTeacher').disabled = true;
+    
+    const modal = new bootstrap.Modal(document.getElementById('addTemporaryLessonModal'));
+    modal.show();
+}
+
+// Удаление урока из временного расписания
+function deleteTemporaryLessonById(lessonId) {
+    if (!confirm('Вы уверены, что хотите удалить этот урок?')) {
+        return;
+    }
+    
+    fetch(`/admin/schedule/temporary/delete/${lessonId}`, {
+        method: 'POST'
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            loadTemporarySchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при удалении урока');
+    });
+}
+
+// Делегирование событий для временного расписания
+document.addEventListener('click', function(e) {
+    // Обработка кнопки добавления урока во временное расписание
+    if (e.target.closest('.add-temporary-lesson-btn')) {
+        const btn = e.target.closest('.add-temporary-lesson-btn');
+        const lesson = parseInt(btn.getAttribute('data-lesson'));
+        const classId = parseInt(btn.getAttribute('data-class-id'));
+        openAddTemporaryLessonModal(lesson, classId);
+    }
+    
+    // Обработка кнопки добавления урока к классу (в заголовке)
+    if (e.target.closest('.add-temporary-lesson-to-class-btn')) {
+        const btn = e.target.closest('.add-temporary-lesson-to-class-btn');
+        const classId = parseInt(btn.getAttribute('data-class-id'));
+        document.getElementById('addTemporaryLessonForm').reset();
+        document.getElementById('temporaryLessonClassId').value = classId;
+        document.getElementById('temporaryLessonDate').value = selectedDate;
+        document.getElementById('temporaryLessonShiftId').value = temporaryShiftId;
+        document.getElementById('temporaryLessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+        document.getElementById('temporaryLessonTeacher').disabled = true;
+        const modal = new bootstrap.Modal(document.getElementById('addTemporaryLessonModal'));
+        modal.show();
+    }
+    
+    // Обработка кнопки удаления урока из временного расписания
+    if (e.target.closest('.delete-temporary-lesson-btn')) {
+        const btn = e.target.closest('.delete-temporary-lesson-btn');
+        const lessonId = parseInt(btn.getAttribute('data-lesson-id'));
+        deleteTemporaryLessonById(lessonId);
+    }
+});
+
+// Обновление списка учителей при выборе предмета во временном расписании
+document.addEventListener('change', function(e) {
+    if (e.target && e.target.id === 'temporaryLessonSubject') {
+        loadTeachersForTemporarySubject(e.target.value);
+    }
+});
+
+// Функция для загрузки учителей по предмету для временного расписания (возвращает Promise)
+function loadTeachersForTemporarySubject(subjectId) {
+    const teacherSelect = document.getElementById('temporaryLessonTeacher');
+    
+    if (!subjectId) {
+        teacherSelect.innerHTML = '<option value="">Сначала выберите предмет</option>';
+        teacherSelect.disabled = true;
+        return;
+    }
+    
+    teacherSelect.innerHTML = '<option value="">Загрузка...</option>';
+    teacherSelect.disabled = true;
+    
+    return fetch(`/admin/schedule/teachers/${subjectId}?shift_id=${temporaryShiftId}`)
+        .then(r => r.json())
+        .then(data => {
+            teacherSelect.innerHTML = '<option value="">Выберите учителя</option>';
+            
+            if (data.teachers && data.teachers.length > 0) {
+                data.teachers.forEach(teacher => {
+                    const option = document.createElement('option');
+                    option.value = teacher.id;
+                    option.textContent = teacher.name;
+                    teacherSelect.appendChild(option);
+                });
+                teacherSelect.disabled = false;
+            } else {
+                teacherSelect.innerHTML = '<option value="">Нет учителей для этого предмета</option>';
+                teacherSelect.disabled = true;
+            }
+            return data;
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            teacherSelect.innerHTML = '<option value="">Ошибка загрузки</option>';
+            teacherSelect.disabled = true;
+            throw error;
+        });
+}
+
+// Форма добавления урока во временное расписание
+document.getElementById('addTemporaryLessonForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const data = {
+        date: document.getElementById('temporaryLessonDate').value,
+        lesson_number: parseInt(document.getElementById('temporaryLessonNumber').value),
+        class_id: parseInt(document.getElementById('temporaryLessonClassId').value),
+        subject_id: parseInt(document.getElementById('temporaryLessonSubject').value),
+        teacher_id: parseInt(document.getElementById('temporaryLessonTeacher').value),
+        cabinet: document.getElementById('temporaryLessonCabinet').value || null
+    };
+
+    fetch('/admin/schedule/temporary/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addTemporaryLessonModal')).hide();
+            document.getElementById('addTemporaryLessonForm').reset();
+            document.getElementById('temporaryLessonTeacher').innerHTML = '<option value="">Сначала выберите предмет</option>';
+            document.getElementById('temporaryLessonTeacher').disabled = true;
+            loadTemporarySchedule();
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при добавлении урока');
+    });
+});
+
+// Отправка расписания всем учителям
+// Скачивание постоянного расписания в Excel
+document.getElementById('exportPermanentScheduleBtn').addEventListener('click', function() {
+    const shiftId = parseInt(document.getElementById('shiftSelect').value);
+    const url = `/admin/schedule/export/excel?shift_id=${shiftId}&type=permanent`;
+    window.location.href = url;
+});
+
+// Скачивание временного расписания в Excel
+document.getElementById('exportTemporaryScheduleBtn').addEventListener('click', function() {
+    if (!selectedDate) {
+        showError('Выберите дату для скачивания расписания', 'Предупреждение');
+        return;
+    }
+    const shiftId = parseInt(document.getElementById('temporaryShiftSelect').value);
+    const url = `/admin/schedule/export/excel?shift_id=${shiftId}&type=temporary&date=${selectedDate}`;
+    window.location.href = url;
+});
+
+document.getElementById('sendScheduleTelegramBtn').addEventListener('click', function() {
+    if (!confirm('Отправить расписание всем учителям с настроенным Telegram ID?')) {
+        return;
+    }
+    
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Отправка...';
+    
+    fetch('/admin/telegram/send-schedule', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            shift_id: currentShiftId
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            let message = `Расписание отправлено!\n\n`;
+            message += `✅ Успешно: ${result.sent}\n`;
+            message += `❌ Ошибок: ${result.failed}`;
+            if (result.errors && result.errors.length > 0) {
+                message += `\n\n⚠️ Ошибки отправки:\n`;
+                message += result.errors.slice(0, 10).join('\n');
+                if (result.errors.length > 10) {
+                    message += `\n...и еще ${result.errors.length - 10}`;
+                }
+                message += `\n\n💡 Возможные причины:\n`;
+                message += `• Учитель не начал диалог с ботом (нужно написать /start)\n`;
+                message += `• Неправильный Telegram ID\n`;
+                message += `• Учитель заблокировал бота`;
+            }
+            showError(message);
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при отправке расписания');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+});
+
+// Отправка изменений из временного расписания
+document.getElementById('sendTemporaryTelegramBtn').addEventListener('click', function() {
+    if (!selectedDate) {
+        showError('Выберите дату', 'Предупреждение');
+        return;
+    }
+    
+    if (!confirm('Отправить изменения из временного расписания всем учителям с настроенным Telegram ID?')) {
+        return;
+    }
+    
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Отправка...';
+    
+    fetch('/admin/telegram/send-temporary', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            date: selectedDate
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            let message = `Изменения отправлены!\n\n`;
+            message += `✅ Успешно: ${result.sent}\n`;
+            message += `❌ Ошибок: ${result.failed}\n`;
+            message += `📭 Без изменений: ${result.no_changes}`;
+            if (result.errors && result.errors.length > 0) {
+                message += `\n\n⚠️ Ошибки отправки:\n`;
+                message += result.errors.slice(0, 10).join('\n');
+                if (result.errors.length > 10) {
+                    message += `\n...и еще ${result.errors.length - 10}`;
+                }
+                message += `\n\n💡 Возможные причины:\n`;
+                message += `• Учитель не начал диалог с ботом (нужно написать /start)\n`;
+                message += `• Неправильный Telegram ID\n`;
+                message += `• Учитель заблокировал бота`;
+            }
+            showError(message);
+        } else {
+            showError(result.error || 'Неизвестная ошибка', 'Ошибка');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showError('Ошибка при отправке изменений');
+    })
+    .finally(() => {
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+});
+
+// ========== AI БОТ УДАЛЕН ==========
+// Все функции AI-бота удалены
+
+
+// Инициализация при загрузке страницы
+document.addEventListener('DOMContentLoaded', function() {
+    console.log('Initializing schedule:', {
+        currentShiftId,
+        scheduleDataLength: scheduleData.length,
+        lessonsCount,
+        classesLength: classes.length
+    });
+    
+    // Проверяем доступность AI API
+    // checkAIStatus() удалена - больше не нужна
+    
+    // Инициализация обработчика очистки расписания
+    const clearBtn = document.getElementById('confirmClearScheduleBtn');
+    if (clearBtn) {
+        clearBtn.addEventListener('click', function() {
+            const errorDiv = document.getElementById('clearScheduleError');
+            errorDiv.classList.add('d-none');
+            
+            if (!confirm('Вы ТОЧНО уверены, что хотите очистить все постоянное расписание?\n\nЭто действие нельзя отменить!')) {
+                return;
+            }
+            
+            // Показываем индикатор загрузки
+            const btn = this;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Очистка...';
+            
+            fetch('/admin/schedule/permanent/clear', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shift_id: currentShiftId
+                })
+            })
+            .then(r => r.json())
+            .then(data => {
+                if (data.success) {
+                    // Закрываем модальное окно
+                    bootstrap.Modal.getInstance(document.getElementById('clearScheduleModal')).hide();
+                    // Перезагружаем расписание
+                    loadSchedule();
+                    // Показываем сообщение об успехе
+                    showError('Расписание успешно очищено', 'Успех');
+                } else {
+                    errorDiv.textContent = data.error || 'Ошибка при очистке расписания';
+                    errorDiv.classList.remove('d-none');
+                }
+            })
+            .catch(error => {
+                console.error('Error:', error);
+                errorDiv.textContent = 'Ошибка при очистке расписания';
+                errorDiv.classList.remove('d-none');
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        });
+    }
+    
+    // Устанавливаем сегодняшнюю дату по умолчанию для временного расписания
+    const today = new Date().toISOString().split('T')[0];
+    const dateInput = document.getElementById('temporaryDate');
+    if (dateInput) {
+        dateInput.value = today;
+        selectedDate = today;
+        temporaryShiftId = parseInt(document.getElementById('temporaryShiftSelect').value);
+        // Загружаем временное расписание только если выбрана дата
+        if (selectedDate) {
+            loadTemporarySchedule();
+        }
+    }
+    
+    // Диалог ИИ удален
+    
+    // Отображаем постоянное расписание, если есть данные
+    // Используем небольшую задержку, чтобы убедиться, что все элементы DOM готовы
+    setTimeout(() => {
+        // Проверяем, какая вкладка активна
+        const activeTab = document.querySelector('#scheduleTabs button.active');
+        const isPermanentTab = !activeTab || activeTab.getAttribute('data-bs-target') === '#permanent-schedule';
+        
+        if (isPermanentTab) {
+            // Если активна вкладка постоянного расписания
+            if (classes.length > 0) {
+                // Проверяем, есть ли настройки уроков (lessonsCount)
+                const hasLessonsCount = lessonsCount && Object.keys(lessonsCount).length > 0;
+                
+                if (hasLessonsCount) {
+                    // Если есть классы и настройки уроков, отображаем таблицу сразу
+                    console.log('Rendering schedule in DOMContentLoaded:', {
+                        scheduleItems: scheduleData.length,
+                        classes: classes.length,
+                        lessonsCount: Object.keys(lessonsCount).length,
+                        lessonsCountValues: lessonsCount
+                    });
+                    renderSchedule();
+                } else {
+                    // Если классов есть, но настроек нет, загружаем с сервера
+                    // Это может произойти, если настройки еще не были сохранены
+                    console.log('Classes found but no lessons count settings, loading from server...');
+                    loadSchedule();
+                }
+            } else {
+                // Если классов нет, загружаем все с сервера
+                console.warn('No classes found, loading from server...');
+                loadSchedule();
+            }
+        }
+    }, 50);
+    
+    // ========== ФИЛЬТР И ГЕНЕРАЦИЯ РАСПИСАНИЯ ==========
+    
+    // Настройки фильтра (хранятся в localStorage)
+    let filterSettings = {
+        algorithm: 'pipeline', // 'pipeline', 'greedy', 'cp_sat', 'basic'
+        lessonMode: 'pairs', // 'pairs' или 'single'
+        subgroupPairs: [] // Массив объектов {subject1_id, subject2_id, subject1_name, subject2_name}
+    };
+    
+    // Загружаем сохраненные настройки фильтра
+    function loadFilterSettings() {
+        const saved = localStorage.getItem('scheduleFilterSettings');
+        if (saved) {
+            try {
+                filterSettings = JSON.parse(saved);
+            } catch (e) {
+                console.error('Error loading filter settings:', e);
+            }
+        }
+        applyFilterSettingsToUI();
+    }
+    
+    // Сохраняем настройки фильтра
+    function saveFilterSettings() {
+        localStorage.setItem('scheduleFilterSettings', JSON.stringify(filterSettings));
+    }
+    
+    // Применяем настройки к UI
+    function applyFilterSettingsToUI() {
+        // Устанавливаем алгоритм генерации
+        const algorithmSelect = document.getElementById('generationAlgorithm');
+        if (algorithmSelect && filterSettings.algorithm) {
+            algorithmSelect.value = filterSettings.algorithm;
+        }
+        
+        // Устанавливаем режим размещения уроков
+        const modeRadio = document.querySelector(`input[name="lessonMode"][value="${filterSettings.lessonMode}"]`);
+        if (modeRadio) {
+            modeRadio.checked = true;
+        }
+        
+        // Очищаем контейнер пар предметов
+        const container = document.getElementById('subgroupPairsContainer');
+        if (container) {
+            container.innerHTML = '';
+            
+            // Добавляем сохраненные пары
+            filterSettings.subgroupPairs.forEach((pair, index) => {
+                addSubgroupPairRow(pair.subject1_id, pair.subject2_id, pair.subject1_name, pair.subject2_name, index);
+            });
+        }
+    }
+    
+    // Добавляет строку для пары предметов
+    function addSubgroupPairRow(subject1Id = null, subject2Id = null, subject1Name = '', subject2Name = '', index = null) {
+        const container = document.getElementById('subgroupPairsContainer');
+        if (!container) return;
+        
+        const rowIndex = index !== null ? index : filterSettings.subgroupPairs.length;
+        const row = document.createElement('div');
+        row.className = 'mb-3 p-3 border rounded';
+        row.setAttribute('data-pair-index', rowIndex);
+        
+        row.innerHTML = `
+            <div class="row align-items-center">
+                <div class="col-md-5">
+                    <label class="form-label small">Предмет 1</label>
+                    <select class="form-select form-select-sm subgroup-subject-1" data-index="${rowIndex}">
+                        <option value="">Выберите предмет</option>
+                        ${subjects.map(s => 
+                            `<option value="${s.id}" ${subject1Id == s.id ? 'selected' : ''}>${s.name}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="col-md-5">
+                    <label class="form-label small">Предмет 2</label>
+                    <select class="form-select form-select-sm subgroup-subject-2" data-index="${rowIndex}">
+                        <option value="">Выберите предмет</option>
+                        ${subjects.map(s => 
+                            `<option value="${s.id}" ${subject2Id == s.id ? 'selected' : ''}>${s.name}</option>`
+                        ).join('')}
+                    </select>
+                </div>
+                <div class="col-md-2">
+                    <button type="button" class="btn btn-sm btn-outline-danger remove-pair-btn" data-index="${rowIndex}">
+                        <i class="bi bi-trash"></i>
+                    </button>
+                </div>
+            </div>
+        `;
+        
+        container.appendChild(row);
+        
+        // Обработчик удаления пары
+        const removeBtn = row.querySelector('.remove-pair-btn');
+        if (removeBtn) {
+            removeBtn.addEventListener('click', function() {
+                const idx = parseInt(this.getAttribute('data-index'));
+                filterSettings.subgroupPairs.splice(idx, 1);
+                saveFilterSettings();
+                applyFilterSettingsToUI();
+            });
+        }
+    }
+    
+    // Обработчик кнопки "Добавить пару предметов"
+    const addSubgroupPairBtn = document.getElementById('addSubgroupPairBtn');
+    if (addSubgroupPairBtn) {
+        addSubgroupPairBtn.addEventListener('click', function() {
+            addSubgroupPairRow();
+        });
+    }
+    
+    // Обработчик кнопки "Сохранить настройки"
+    const saveFilterBtn = document.getElementById('saveFilterBtn');
+    if (saveFilterBtn) {
+        saveFilterBtn.addEventListener('click', function() {
+            // Сохраняем алгоритм генерации
+            const algorithmSelect = document.getElementById('generationAlgorithm');
+            if (algorithmSelect) {
+                filterSettings.algorithm = algorithmSelect.value;
+            }
+            
+            // Сохраняем режим размещения уроков
+            const selectedMode = document.querySelector('input[name="lessonMode"]:checked');
+            if (selectedMode) {
+                filterSettings.lessonMode = selectedMode.value;
+            }
+            
+            // Собираем пары предметов
+            filterSettings.subgroupPairs = [];
+            const pairRows = document.querySelectorAll('#subgroupPairsContainer > div[data-pair-index]');
+            pairRows.forEach(row => {
+                const subject1Select = row.querySelector('.subgroup-subject-1');
+                const subject2Select = row.querySelector('.subgroup-subject-2');
+                if (subject1Select && subject2Select && subject1Select.value && subject2Select.value) {
+                    const subject1Id = parseInt(subject1Select.value);
+                    const subject2Id = parseInt(subject2Select.value);
+                    const subject1Name = subject1Select.options[subject1Select.selectedIndex].text;
+                    const subject2Name = subject2Select.options[subject2Select.selectedIndex].text;
+                    
+                    filterSettings.subgroupPairs.push({
+                        subject1_id: subject1Id,
+                        subject2_id: subject2Id,
+                        subject1_name: subject1Name,
+                        subject2_name: subject2Name
+                    });
+                }
+            });
+            
+            // Сохраняем настройки
+            saveFilterSettings();
+            
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('filterSettingsModal'));
+            if (modal) {
+                modal.hide();
+            }
+            
+            // Показываем сообщение об успехе
+            showError('Настройки фильтра сохранены', 'Успех');
+        });
+    }
+    
+    // Обработчик кнопки "Сгенерировать расписание" (прямая генерация без модального окна)
+    const generateScheduleBtnDirect = document.getElementById('generateScheduleBtnDirect');
+    if (generateScheduleBtnDirect) {
+        generateScheduleBtnDirect.addEventListener('click', function() {
+            if (!confirm('Вы уверены, что хотите сгенерировать расписание? Это действие заменит текущее постоянное расписание.')) {
+                return;
+            }
+            
+            // Проверяем наличие активной смены
+            if (!currentShiftId) {
+                showError('Не выбрана активная смена. Выберите смену перед генерацией расписания.', 'Ошибка');
+                return;
+            }
+            
+            // Загружаем сохраненные настройки фильтра
+            loadFilterSettings();
+            
+            // Показываем индикатор загрузки
+            const btn = this;
+            const originalText = btn.innerHTML;
+            btn.disabled = true;
+            btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Генерация...';
+            
+            // Показываем модальное окно с прогресс-баром
+            const progressModal = new bootstrap.Modal(document.getElementById('generationProgressModal'));
+            progressModal.show();
+            
+            // Сбрасываем прогресс-бар
+            updateProgress(0, 'Инициализация...', 1);
+            
+            // Формируем данные для запроса
+            const requestData = {
+                shift_id: currentShiftId,
+                filter_settings: filterSettings,
+                algorithm: filterSettings.algorithm || 'pipeline'
+            };
+            
+            console.log('Отправка запроса на генерацию расписания:', requestData);
+            
+            // Симулируем прогресс (так как мы не можем получить реальный прогресс из одного запроса)
+            // Start polling progress
+            const progressInterval = pollProgress(currentShiftId);
+
+            
+            // Отправляем запрос на генерацию с сохраненными настройками
+            fetch('/admin/schedule/generate', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    shift_id: currentShiftId,
+                    filter_settings: filterSettings,
+                    algorithm: filterSettings.algorithm || 'pipeline'
+                })
+            })
+            .then(r => {
+                if (!r.ok) {
+                    return r.json().then(data => {
+                        throw new Error(data.error || `HTTP ${r.status}: ${r.statusText}`);
+                    });
+                }
+                return r.json();
+            })
+            .then(data => {
+                clearInterval(progressInterval);
+                updateProgress(100, 'Завершено!', 5);
+                
+                setTimeout(() => {
+                    progressModal.hide();
+                    
+                    if (data.success) {
+                        let message = data.message || 'Расписание успешно сгенерировано';
+                        if (data.summary) {
+                            message += '\n' + data.summary;
+                        }
+                        showError(message, 'Успех');
+                        
+                        // Показываем предупреждения, если есть
+                        if (data.warnings && data.warnings.length > 0) {
+                            console.warn('Предупреждения при генерации:', data.warnings);
+                            setTimeout(() => {
+                                alert('Предупреждения:\n' + data.warnings.join('\n'));
+                            }, 500);
+                        }
+                        
+                        // Перезагружаем расписание
+                        loadSchedule();
+                    } else {
+                        let errorMsg = data.error || 'Ошибка при генерации расписания';
+                        if (data.summary) {
+                            errorMsg += '\n' + data.summary;
+                        }
+                        if (data.warnings && data.warnings.length > 0) {
+                            errorMsg += '\n\nПредупреждения:\n' + data.warnings.join('\n');
+                        }
+                        showError(errorMsg, 'Ошибка');
+                        console.error('Ошибка генерации расписания:', data);
+                    }
+                }, 500);
+            })
+            .catch(error => {
+                clearInterval(progressInterval);
+                updateProgress(0, 'Ошибка!', 0);
+                
+                setTimeout(() => {
+                    progressModal.hide();
+                    
+                    console.error('Ошибка при генерации расписания:', error);
+                    console.error('Тип ошибки:', error.name);
+                    console.error('Сообщение:', error.message);
+                    console.error('Стек:', error.stack);
+                    
+                    let errorMsg = 'Ошибка при генерации расписания';
+                    if (error.message) {
+                        errorMsg += ': ' + error.message;
+                    } else if (error.name === 'TypeError' && error.message.includes('fetch')) {
+                        errorMsg += ': Не удалось подключиться к серверу. Проверьте подключение и логи сервера.';
+                    } else {
+                        errorMsg += ': ' + (error.toString() || 'Неизвестная ошибка');
+                    }
+                    
+                    showError(errorMsg, 'Ошибка');
+                    
+                    // Показываем дополнительную информацию в консоли
+                    console.error('Детали ошибки:', {
+                        name: error.name,
+                        message: error.message,
+                        stack: error.stack,
+                        shift_id: currentShiftId,
+                        algorithm: filterSettings.algorithm || 'pipeline'
+                    });
+                }, 500);
+            })
+            .finally(() => {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+            });
+        });
+    }
+    
+    // Загружаем настройки фильтра при загрузке страницы
+    loadFilterSettings();
+    
+    // Обработчик открытия модального окна фильтра
+    const filterSettingsModal = document.getElementById('filterSettingsModal');
+    if (filterSettingsModal) {
+        filterSettingsModal.addEventListener('show.bs.modal', function() {
+            // При открытии модального окна загружаем актуальные настройки
+            loadFilterSettings();
+        });
+    }
+});
+
+// Функция для обновления прогресс-бара
+function updateProgress(percent, stageText, currentStep) {
+    const progressBar = document.getElementById('generationProgressBar');
+    const progressBarText = document.getElementById('progressBarText');
+    const progressPercentText = document.getElementById('progressPercentText');
+    const progressStageText = document.getElementById('progressStageText');
+    
+    if (progressBar) {
+        progressBar.style.width = percent + '%';
+        progressBar.setAttribute('aria-valuenow', percent);
+    }
+    
+    if (progressBarText) {
+        progressBarText.textContent = Math.round(percent) + '%';
+    }
+    
+    if (progressPercentText) {
+        progressPercentText.textContent = Math.round(percent) + '%';
+    }
+    
+    if (progressStageText) {
+        progressStageText.textContent = stageText;
+    }
+    
+    // Обновляем иконки этапов
+    const steps = ['progressStep1', 'progressStep2', 'progressStep3', 'progressStep4', 'progressStep5'];
+    steps.forEach((stepId, index) => {
+        const stepElement = document.getElementById(stepId);
+        if (stepElement) {
+            const icon = stepElement.querySelector('i');
+            if (icon) {
+                if (index < currentStep) {
+                    // Завершенные этапы
+                    icon.className = 'bi bi-check-circle-fill text-success';
+                } else if (index === currentStep - 1) {
+                    // Текущий этап
+                    icon.className = 'bi bi-arrow-right-circle-fill text-primary';
+                } else {
+                    // Будущие этапы
+                    icon.className = 'bi bi-circle text-muted';
+                }
+            }
+        }
+    });
+}
+
+// Функция для симуляции прогресса (так как мы не можем получить реальный прогресс из одного запроса)
+// Функция для опроса реального прогресса с сервера
+function pollProgress(shiftId) {
+    const interval = setInterval(() => {
+        fetch(`/admin/schedule/progress/${shiftId}`)
+            .then(r => r.json())
+            .then(data => {
+                if (data.percent !== undefined) {
+                    updateProgress(data.percent, data.stage, data.step);
+                }
+            })
+            .catch(error => {
+                console.error('Error polling progress:', error);
+            });
+    }, 1000); // Опрос каждую секунду
+    
+    return interval;
+}
+</script>
+{% endblock %}

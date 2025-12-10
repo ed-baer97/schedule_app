@@ -1,0 +1,244 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">
+            <i class="bi bi-table"></i> Нагрузка классов по предметам
+        </h2>
+        
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> 
+            Здесь вы можете редактировать количество часов по каждому предмету для каждого класса.
+            Введите 0, чтобы удалить нагрузку.
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="classLoadsTable">
+                <thead class="table-light">
+                    <tr>
+                        <th style="position: sticky; left: 0; background: white; z-index: 10;">Класс</th>
+                        {% for subject in subjects %}
+                        <th class="text-center" style="min-width: 80px;">
+                            <div style="writing-mode: vertical-rl; text-orientation: mixed; height: 150px; display: flex; align-items: center; justify-content: center;">
+                                {{ subject.name }}
+                            </div>
+                        </th>
+                        {% endfor %}
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for class in classes %}
+                    <tr>
+                        <td style="position: sticky; left: 0; background: white; font-weight: bold; z-index: 9;">
+                            {{ class.name }}
+                        </td>
+                        {% for subject in subjects %}
+                        <td class="text-center">
+                            {% set hours = load_dict.get((class.id, subject.id), 0) %}
+                            <input type="number" 
+                                   class="form-control form-control-sm hours-input" 
+                                   value="{{ hours }}" 
+                                   min="0" 
+                                   max="40"
+                                   data-class-id="{{ class.id }}"
+                                   data-subject-id="{{ subject.id }}"
+                                   style="width: 70px; margin: 0 auto; text-align: center;">
+                        </td>
+                        {% endfor %}
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="mt-3">
+            <button class="btn btn-primary" id="saveAllBtn">
+                <i class="bi bi-save"></i> Сохранить все изменения
+            </button>
+            <button class="btn btn-success ms-2" id="autoFillBtn">
+                <i class="bi bi-magic"></i> Автозаполнить на основе назначений учителей
+            </button>
+            <span id="saveStatus" class="ms-3"></span>
+        </div>
+    </div>
+</div>
+
+<script>
+let changedInputs = new Set();
+let saveTimeout = null;
+
+// Отслеживаем изменения
+document.querySelectorAll('.hours-input').forEach(input => {
+    input.addEventListener('change', function() {
+        const key = `${this.dataset.classId}-${this.dataset.subjectId}`;
+        changedInputs.add(key);
+        updateSaveButton();
+    });
+    
+    // Автосохранение при потере фокуса (с задержкой)
+    input.addEventListener('blur', function() {
+        if (saveTimeout) {
+            clearTimeout(saveTimeout);
+        }
+        saveTimeout = setTimeout(() => {
+            saveSingleInput(this);
+        }, 500);
+    });
+});
+
+function updateSaveButton() {
+    const btn = document.getElementById('saveAllBtn');
+    const status = document.getElementById('saveStatus');
+    
+    if (changedInputs.size > 0) {
+        btn.classList.remove('btn-primary');
+        btn.classList.add('btn-warning');
+        status.textContent = `Несохранено изменений: ${changedInputs.size}`;
+        status.className = 'ms-3 text-warning';
+    } else {
+        btn.classList.remove('btn-warning');
+        btn.classList.add('btn-primary');
+        status.textContent = '';
+    }
+}
+
+function saveSingleInput(input) {
+    const classId = input.dataset.classId;
+    const subjectId = input.dataset.subjectId;
+    const hours = parseInt(input.value) || 0;
+    const key = `${classId}-${subjectId}`;
+    
+    // Визуальная индикация сохранения
+    input.style.borderColor = '#ffc107';
+    
+    fetch('/admin/class-loads/update', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+            class_id: parseInt(classId),
+            subject_id: parseInt(subjectId),
+            hours_per_week: hours
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            input.style.borderColor = '#28a745';
+            changedInputs.delete(key);
+            updateSaveButton();
+            
+            // Убираем зеленую рамку через 1 секунду
+            setTimeout(() => {
+                input.style.borderColor = '';
+            }, 1000);
+        } else {
+            input.style.borderColor = '#dc3545';
+            alert('Ошибка: ' + (data.error || 'Не удалось сохранить'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        input.style.borderColor = '#dc3545';
+        alert('Ошибка при сохранении');
+    });
+}
+
+// Сохранение всех изменений
+document.getElementById('saveAllBtn').addEventListener('click', function() {
+    if (changedInputs.size === 0) {
+        alert('Нет изменений для сохранения');
+        return;
+    }
+    
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Сохранение...';
+    
+    const inputsToSave = Array.from(document.querySelectorAll('.hours-input')).filter(input => {
+        const key = `${input.dataset.classId}-${input.dataset.subjectId}`;
+        return changedInputs.has(key);
+    });
+    
+    let saved = 0;
+    let errors = 0;
+    
+    inputsToSave.forEach((input, index) => {
+        setTimeout(() => {
+            saveSingleInput(input);
+            saved++;
+            
+            if (saved + errors === inputsToSave.length) {
+                btn.disabled = false;
+                btn.innerHTML = originalText;
+                
+                if (errors === 0) {
+                    alert('Все изменения успешно сохранены!');
+                } else {
+                    alert(`Сохранено: ${saved}, Ошибок: ${errors}`);
+                }
+            }
+        }, index * 100); // Небольшая задержка между запросами
+    });
+});
+
+// Автозаполнение на основе назначений учителей
+document.getElementById('autoFillBtn').addEventListener('click', function() {
+    if (!confirm('Автозаполнить нагрузку классов на основе назначений учителей?\n\nЭто суммирует часы всех учителей для каждого класса и предмета.')) {
+        return;
+    }
+    
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Автозаполнение...';
+    
+    fetch('/admin/class-loads/auto-fill', {
+        method: 'POST',
+        headers: {
+            'Content-Type': 'application/json'
+        }
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            alert(`Автозаполнение завершено!\nСоздано: ${data.created}, обновлено: ${data.updated}`);
+            // Перезагружаем страницу, чтобы показать обновленные данные
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Не удалось выполнить автозаполнение'));
+            btn.disabled = false;
+            btn.innerHTML = originalText;
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при автозаполнении');
+        btn.disabled = false;
+        btn.innerHTML = originalText;
+    });
+});
+</script>
+
+<style>
+#classLoadsTable {
+    font-size: 0.9rem;
+}
+
+#classLoadsTable thead th {
+    border-bottom: 2px solid #dee2e6;
+}
+
+#classLoadsTable tbody td {
+    vertical-align: middle;
+}
+
+.hours-input:focus {
+    border-color: #0d6efd;
+    box-shadow: 0 0 0 0.2rem rgba(13, 110, 253, 0.25);
+}
+</style>
+{% endblock %}
+

@@ -1,0 +1,927 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="bi bi-door-open"></i> Кабинеты и учителя</h2>
+    <div>
+        {% if subjects_with_cabinets or cabinets_without_subject %}
+        <button class="btn btn-danger me-2" onclick="deleteAllCabinets()">
+            <i class="bi bi-trash"></i> Удалить все
+        </button>
+        {% endif %}
+        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addCabinetModal">
+            <i class="bi bi-plus-circle"></i> Добавить кабинет
+        </button>
+    </div>
+</div>
+
+{% if subjects_with_cabinets or cabinets_without_subject %}
+<div class="accordion" id="subjectsAccordion">
+    {% for subject_data in subjects_with_cabinets %}
+    {% set subject_id = subject_data.subject_id %}
+    {% set subject_name = subject_data.subject_name %}
+    {% set cabinets = subject_data.cabinets %}
+    
+    <div class="accordion-item mb-3">
+        <h2 class="accordion-header" id="heading-{{ subject_id }}">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                    data-bs-target="#collapse-{{ subject_id }}" aria-expanded="false" 
+                    aria-controls="collapse-{{ subject_id }}">
+                <i class="bi bi-book me-2"></i> <strong>{{ subject_name }}</strong>
+                <span class="badge bg-secondary ms-2">{{ cabinets|length }} кабинет(ов)</span>
+                <button type="button" class="btn btn-sm btn-outline-light ms-auto me-2" 
+                        onclick="event.stopPropagation(); openSubjectModal({{ subject_id }}, '{{ subject_name }}')"
+                        title="Открыть в модальном окне">
+                    <i class="bi bi-arrows-fullscreen"></i>
+                </button>
+            </button>
+        </h2>
+        <div id="collapse-{{ subject_id }}" class="accordion-collapse collapse" 
+             aria-labelledby="heading-{{ subject_id }}" data-bs-parent="#subjectsAccordion">
+            <div class="accordion-body">
+                <div class="row g-3">
+                    {% for cabinet in cabinets %}
+                    {% set cabinet_id = cabinet.cabinet_id %}
+                    {% set cabinet_name = cabinet.cabinet_name %}
+                    {% set teachers = cabinet.teachers %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card shadow-sm h-100" data-cabinet-id="{{ cabinet_id }}">
+                            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-door-open"></i> Кабинет {{ cabinet_name }}
+                                    {% if cabinet.subgroups_only %}
+                                    <span class="badge bg-warning text-dark ms-2" title="Только для подгрупп">
+                                        <i class="bi bi-people"></i> Подгруппы
+                                    </span>
+                                    {% endif %}
+                                    {% if cabinet.exclusive_to_subject %}
+                                    <span class="badge bg-danger text-white ms-2" title="Только для этого предмета">
+                                        <i class="bi bi-lock"></i> Только этот предмет
+                                    </span>
+                                    {% endif %}
+                                </h6>
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        onclick="deleteCabinet({{ cabinet_id }}, '{{ cabinet_name }}')"
+                                        title="Удалить кабинет">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="subgroups-only-{{ cabinet_id }}"
+                                               {% if cabinet.subgroups_only %}checked{% endif %}
+                                               onchange="updateSubgroupsOnly({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="subgroups-only-{{ cabinet_id }}">
+                                            <i class="bi bi-people"></i> Только для подгрупп
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="exclusive-to-subject-{{ cabinet_id }}"
+                                               {% if cabinet.exclusive_to_subject %}checked{% endif %}
+                                               onchange="updateExclusiveToSubject({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="exclusive-to-subject-{{ cabinet_id }}">
+                                            <i class="bi bi-lock"></i> Только для этого предмета
+                                        </label>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small">Учителя:</label>
+                                    <div id="teachers-list-{{ cabinet_id }}" class="mb-3">
+                                        {% if teachers %}
+                                            {% for teacher in teachers %}
+                                            <span class="badge bg-info me-2 mb-2 teacher-badge" 
+                                                  data-cabinet-id="{{ cabinet_id }}" 
+                                                  data-teacher-id="{{ teacher.id }}">
+                                                {{ teacher.full_name }}
+                                                <button type="button" class="btn-close btn-close-white ms-2" 
+                                                        onclick="removeTeacher({{ cabinet_id }}, {{ teacher.id }}, '{{ teacher.full_name }}')"
+                                                        style="font-size: 0.7em;"></button>
+                                            </span>
+                                            {% endfor %}
+                                        {% else %}
+                                            <p class="text-muted mb-0 small">Учителя не назначены</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="input-group input-group-sm">
+                                    <select class="form-select form-select-sm" id="teacher-select-{{ cabinet_id }}">
+                                        <option value="">Выберите учителя...</option>
+                                        {% for teacher in all_teachers %}
+                                            {% if teacher.id not in teachers|map(attribute='id')|list %}
+                                            <option value="{{ teacher.id }}">{{ teacher.full_name }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-success btn-sm" 
+                                            onclick="addTeacher({{ cabinet_id }})">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+    
+    {% if cabinets_without_subject %}
+    <div class="accordion-item mb-3">
+        <h2 class="accordion-header" id="heading-no-subject">
+            <button class="accordion-button collapsed" type="button" data-bs-toggle="collapse" 
+                    data-bs-target="#collapse-no-subject" aria-expanded="false" 
+                    aria-controls="collapse-no-subject">
+                <i class="bi bi-exclamation-triangle me-2"></i> <strong>Кабинеты без предмета</strong>
+                <span class="badge bg-warning ms-2">{{ cabinets_without_subject|length }} кабинет(ов)</span>
+            </button>
+        </h2>
+        <div id="collapse-no-subject" class="accordion-collapse collapse" 
+             aria-labelledby="heading-no-subject" data-bs-parent="#subjectsAccordion">
+            <div class="accordion-body">
+                <div class="alert alert-warning mb-3">
+                    <small>Эти кабинеты не привязаны к предметам. Рекомендуется привязать их к соответствующим предметам.</small>
+                </div>
+                <div class="row g-3">
+                    {% for cabinet in cabinets_without_subject %}
+                    {% set cabinet_id = cabinet.cabinet_id %}
+                    {% set cabinet_name = cabinet.cabinet_name %}
+                    {% set teachers = cabinet.teachers %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card shadow-sm h-100" data-cabinet-id="{{ cabinet_id }}">
+                            <div class="card-header bg-warning text-dark d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-door-open"></i> Кабинет {{ cabinet_name }}
+                                    {% if cabinet.subgroups_only %}
+                                    <span class="badge bg-danger text-white ms-2" title="Только для подгрупп">
+                                        <i class="bi bi-people"></i> Подгруппы
+                                    </span>
+                                    {% endif %}
+                                </h6>
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        onclick="deleteCabinet({{ cabinet_id }}, '{{ cabinet_name }}')"
+                                        title="Удалить кабинет">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="subgroups-only-{{ cabinet_id }}"
+                                               {% if cabinet.subgroups_only %}checked{% endif %}
+                                               onchange="updateSubgroupsOnly({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="subgroups-only-{{ cabinet_id }}">
+                                            <i class="bi bi-people"></i> Только для подгрупп
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="exclusive-to-subject-{{ cabinet_id }}"
+                                               {% if cabinet.exclusive_to_subject %}checked{% endif %}
+                                               onchange="updateExclusiveToSubject({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="exclusive-to-subject-{{ cabinet_id }}">
+                                            <i class="bi bi-lock"></i> Только для этого предмета
+                                        </label>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small" for="max-classes-{{ cabinet_id }}">
+                                            <i class="bi bi-people-fill"></i> Макс. классов одновременно:
+                                        </label>
+                                        <select class="form-select form-select-sm" 
+                                                id="max-classes-{{ cabinet_id }}"
+                                                onchange="updateMaxClasses({{ cabinet_id }}, this.value)">
+                                            {% for i in range(1, 11) %}
+                                            <option value="{{ i }}" {% if (cabinet.max_classes_simultaneously or 1) == i %}selected{% endif %}>
+                                                {{ i }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <small class="text-muted">По умолчанию: 1. Для спортзала можно выбрать больше</small>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small">Учителя:</label>
+                                    <div id="teachers-list-{{ cabinet_id }}" class="mb-3">
+                                        {% if teachers %}
+                                            {% for teacher in teachers %}
+                                            <span class="badge bg-info me-2 mb-2 teacher-badge" 
+                                                  data-cabinet-id="{{ cabinet_id }}" 
+                                                  data-teacher-id="{{ teacher.id }}">
+                                                {{ teacher.full_name }}
+                                                <button type="button" class="btn-close btn-close-white ms-2" 
+                                                        onclick="removeTeacher({{ cabinet_id }}, {{ teacher.id }}, '{{ teacher.full_name }}')"
+                                                        style="font-size: 0.7em;"></button>
+                                            </span>
+                                            {% endfor %}
+                                        {% else %}
+                                            <p class="text-muted mb-0 small">Учителя не назначены</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="input-group input-group-sm">
+                                    <select class="form-select form-select-sm" id="teacher-select-{{ cabinet_id }}">
+                                        <option value="">Выберите учителя...</option>
+                                        {% for teacher in all_teachers %}
+                                            {% if teacher.id not in teachers|map(attribute='id')|list %}
+                                            <option value="{{ teacher.id }}">{{ teacher.full_name }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-success btn-sm" 
+                                            onclick="addTeacher({{ cabinet_id }})">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+    </div>
+    {% endif %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">Нет кабинетов в базе данных.</p>
+    <p class="mb-0">Добавьте кабинет, используя кнопку выше, или они появятся автоматически при создании расписания.</p>
+</div>
+{% endif %}
+
+<!-- Модальные окна для предметов -->
+{% for subject_data in subjects_with_cabinets %}
+{% set subject_id = subject_data.subject_id %}
+{% set subject_name = subject_data.subject_name %}
+{% set cabinets = subject_data.cabinets %}
+<div class="modal fade" id="subjectModal-{{ subject_id }}" tabindex="-1" aria-labelledby="subjectModalLabel-{{ subject_id }}">
+    <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+            <div class="modal-header bg-primary text-white">
+                <h5 class="modal-title" id="subjectModalLabel-{{ subject_id }}">
+                    <i class="bi bi-book me-2"></i> {{ subject_name }}
+                    <span class="badge bg-light text-dark ms-2">{{ cabinets|length }} кабинет(ов)</span>
+                </h5>
+                <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <div class="row g-3">
+                    {% for cabinet in cabinets %}
+                    {% set cabinet_id = cabinet.cabinet_id %}
+                    {% set cabinet_name = cabinet.cabinet_name %}
+                    {% set teachers = cabinet.teachers %}
+                    <div class="col-md-6 col-lg-4">
+                        <div class="card shadow-sm h-100" data-cabinet-id="{{ cabinet_id }}">
+                            <div class="card-header bg-primary text-white d-flex justify-content-between align-items-center">
+                                <h6 class="mb-0">
+                                    <i class="bi bi-door-open"></i> Кабинет {{ cabinet_name }}
+                                    {% if cabinet.subgroups_only %}
+                                    <span class="badge bg-warning text-dark ms-2" title="Только для подгрупп">
+                                        <i class="bi bi-people"></i> Подгруппы
+                                    </span>
+                                    {% endif %}
+                                    {% if cabinet.exclusive_to_subject %}
+                                    <span class="badge bg-danger text-white ms-2" title="Только для этого предмета">
+                                        <i class="bi bi-lock"></i> Только этот предмет
+                                    </span>
+                                    {% endif %}
+                                </h6>
+                                <button type="button" class="btn btn-sm btn-danger" 
+                                        onclick="deleteCabinet({{ cabinet_id }}, '{{ cabinet_name }}')"
+                                        title="Удалить кабинет">
+                                    <i class="bi bi-trash"></i>
+                                </button>
+                            </div>
+                            <div class="card-body">
+                                <div class="mb-3">
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="subgroups-only-modal-{{ cabinet_id }}"
+                                               {% if cabinet.subgroups_only %}checked{% endif %}
+                                               onchange="updateSubgroupsOnly({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="subgroups-only-modal-{{ cabinet_id }}">
+                                            <i class="bi bi-people"></i> Только для подгрупп
+                                        </label>
+                                    </div>
+                                    <div class="form-check form-switch mb-2">
+                                        <input class="form-check-input" type="checkbox" 
+                                               id="exclusive-to-subject-modal-{{ cabinet_id }}"
+                                               {% if cabinet.exclusive_to_subject %}checked{% endif %}
+                                               onchange="updateExclusiveToSubject({{ cabinet_id }}, this.checked)">
+                                        <label class="form-check-label small" for="exclusive-to-subject-modal-{{ cabinet_id }}">
+                                            <i class="bi bi-lock"></i> Только для этого предмета
+                                        </label>
+                                    </div>
+                                    <div class="mb-2">
+                                        <label class="form-label small" for="max-classes-modal-{{ cabinet_id }}">
+                                            <i class="bi bi-people-fill"></i> Макс. классов одновременно:
+                                        </label>
+                                        <select class="form-select form-select-sm" 
+                                                id="max-classes-modal-{{ cabinet_id }}"
+                                                onchange="updateMaxClasses({{ cabinet_id }}, this.value)">
+                                            {% for i in range(1, 11) %}
+                                            <option value="{{ i }}" {% if (cabinet.max_classes_simultaneously or 1) == i %}selected{% endif %}>
+                                                {{ i }}
+                                            </option>
+                                            {% endfor %}
+                                        </select>
+                                        <small class="text-muted">По умолчанию: 1. Для спортзала можно выбрать больше</small>
+                                    </div>
+                                </div>
+                                <div class="mb-3">
+                                    <label class="form-label fw-bold small">Учителя:</label>
+                                    <div id="teachers-list-modal-{{ cabinet_id }}" class="mb-3">
+                                        {% if teachers %}
+                                            {% for teacher in teachers %}
+                                            <span class="badge bg-info me-2 mb-2 teacher-badge" 
+                                                  data-cabinet-id="{{ cabinet_id }}" 
+                                                  data-teacher-id="{{ teacher.id }}">
+                                                {{ teacher.full_name }}
+                                                <button type="button" class="btn-close btn-close-white ms-2" 
+                                                        onclick="removeTeacher({{ cabinet_id }}, {{ teacher.id }}, '{{ teacher.full_name }}')"
+                                                        style="font-size: 0.7em;"></button>
+                                            </span>
+                                            {% endfor %}
+                                        {% else %}
+                                            <p class="text-muted mb-0 small">Учителя не назначены</p>
+                                        {% endif %}
+                                    </div>
+                                </div>
+                                
+                                <div class="input-group input-group-sm">
+                                    <select class="form-select form-select-sm" id="teacher-select-modal-{{ cabinet_id }}">
+                                        <option value="">Выберите учителя...</option>
+                                        {% for teacher in all_teachers %}
+                                            {% if teacher.id not in teachers|map(attribute='id')|list %}
+                                            <option value="{{ teacher.id }}">{{ teacher.full_name }}</option>
+                                            {% endif %}
+                                        {% endfor %}
+                                    </select>
+                                    <button class="btn btn-success btn-sm" 
+                                            onclick="addTeacher({{ cabinet_id }}, 'modal')">
+                                        <i class="bi bi-plus-circle"></i>
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
+            </div>
+        </div>
+    </div>
+</div>
+{% endfor %}
+
+<!-- Modal для добавления нового кабинета -->
+<div class="modal fade" id="addCabinetModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить новый кабинет</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <div class="mb-3">
+                    <label for="newCabinetSubject" class="form-label">Предмет <span class="text-danger">*</span></label>
+                    <select class="form-select" id="newCabinetSubject" required>
+                        <option value="">Выберите предмет...</option>
+                        {% for subject in all_subjects %}
+                        <option value="{{ subject.id }}">{{ subject.name }}</option>
+                        {% endfor %}
+                    </select>
+                </div>
+                <div class="mb-3">
+                    <label for="newCabinetName" class="form-label">Номер кабинета <span class="text-danger">*</span></label>
+                    <input type="text" class="form-control" id="newCabinetName" 
+                           placeholder="Например: 101" maxlength="10" required>
+                </div>
+                <div class="mb-3">
+                    <div class="form-check form-switch mb-2">
+                        <input class="form-check-input" type="checkbox" id="newCabinetSubgroupsOnly">
+                        <label class="form-check-label" for="newCabinetSubgroupsOnly">
+                            <i class="bi bi-people"></i> Только для подгрупп
+                        </label>
+                        <small class="form-text text-muted d-block">
+                            Включите, если кабинет предназначен только для занятий подгрупп (например, компьютерный класс, лаборатория)
+                        </small>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="newCabinetExclusiveToSubject">
+                        <label class="form-check-label" for="newCabinetExclusiveToSubject">
+                            <i class="bi bi-lock"></i> Только для этого предмета
+                        </label>
+                        <small class="form-text text-muted d-block">
+                            Включите, если кабинет нельзя использовать для других предметов
+                        </small>
+                    </div>
+                    <div class="mb-3">
+                        <label for="newCabinetMaxClasses" class="form-label">
+                            <i class="bi bi-people-fill"></i> Максимальное количество классов одновременно
+                        </label>
+                        <select class="form-select" id="newCabinetMaxClasses">
+                            {% for i in range(1, 11) %}
+                            <option value="{{ i }}" {% if i == 1 %}selected{% endif %}>{{ i }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="form-text text-muted d-block">
+                            По умолчанию: 1. Для спортзала можно выбрать больше (например, 3-4 класса одновременно)
+                        </small>
+                    </div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                <button type="button" class="btn btn-primary" onclick="createNewCabinet()">Добавить</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function openSubjectModal(subjectId, subjectName) {
+    const modal = new bootstrap.Modal(document.getElementById(`subjectModal-${subjectId}`));
+    modal.show();
+}
+
+function addTeacher(cabinetId, context = '') {
+    const prefix = context === 'modal' ? 'modal-' : '';
+    const select = document.getElementById(`teacher-select-${prefix}${cabinetId}`);
+    const teacherId = select.value;
+    
+    if (!teacherId) {
+        alert('Выберите учителя');
+        return;
+    }
+    
+    fetch('/admin/cabinets/add-teacher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId),
+            teacher_id: parseInt(teacherId)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Обновляем списки учителей в обоих местах (аккордеон и модальное окно)
+            const teachersListIds = [
+                `teachers-list-${cabinetId}`,
+                `teachers-list-modal-${cabinetId}`
+            ];
+            
+            teachersListIds.forEach(listId => {
+                const teachersList = document.getElementById(listId);
+                if (teachersList) {
+                    // Убираем сообщение "Учителя не назначены", если есть
+                    const noTeachersMsg = teachersList.querySelector('.text-muted');
+                    if (noTeachersMsg) {
+                        noTeachersMsg.remove();
+                    }
+                    
+                    // Проверяем, нет ли уже этого учителя
+                    const existing = teachersList.querySelector(`[data-teacher-id="${teacherId}"]`);
+                    if (!existing) {
+                        // Создаем новый badge
+                        const badge = document.createElement('span');
+                        badge.className = 'badge bg-info me-2 mb-2 teacher-badge';
+                        badge.setAttribute('data-cabinet-id', cabinetId);
+                        badge.setAttribute('data-teacher-id', teacherId);
+                        badge.innerHTML = `${data.teacher.name} <button type="button" class="btn-close btn-close-white ms-2" onclick="removeTeacher(${cabinetId}, ${teacherId}, '${data.teacher.name.replace(/'/g, "\\'")}')" style="font-size: 0.7em;"></button>`;
+                        
+                        teachersList.appendChild(badge);
+                    }
+                }
+            });
+            
+            // Удаляем опцию из select
+            select.remove(select.selectedIndex);
+            select.value = '';
+            
+            // Обновляем все select'ы для этого учителя (и в аккордеоне, и в модальных окнах)
+            document.querySelectorAll(`select[id^="teacher-select-"]`).forEach(s => {
+                if (s.id !== `teacher-select-${prefix}${cabinetId}`) {
+                    Array.from(s.options).forEach(opt => {
+                        if (opt.value === teacherId) {
+                            opt.remove();
+                        }
+                    });
+                }
+            });
+        } else {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при добавлении учителя');
+    });
+}
+
+function removeTeacher(cabinetId, teacherId, teacherName) {
+    if (!confirm(`Вы уверены, что хотите удалить учителя "${teacherName}" из этого кабинета?`)) {
+        return;
+    }
+    
+    fetch('/admin/cabinets/remove-teacher', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId),
+            teacher_id: parseInt(teacherId)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Удаляем badge из всех списков (аккордеон и модальное окно)
+            const teachersListIds = [
+                `teachers-list-${cabinetId}`,
+                `teachers-list-modal-${cabinetId}`
+            ];
+            
+            teachersListIds.forEach(listId => {
+                const teachersList = document.getElementById(listId);
+                if (teachersList) {
+                    const badge = teachersList.querySelector(`.teacher-badge[data-teacher-id="${teacherId}"]`);
+                    if (badge) {
+                        badge.remove();
+                        
+                        // Если учителей не осталось, показываем сообщение
+                        const remainingBadges = teachersList.querySelectorAll('.teacher-badge');
+                        if (remainingBadges.length === 0) {
+                            const noTeachersMsg = document.createElement('p');
+                            noTeachersMsg.className = 'text-muted mb-0 small';
+                            noTeachersMsg.textContent = 'Учителя не назначены';
+                            teachersList.appendChild(noTeachersMsg);
+                        }
+                    }
+                }
+            });
+            
+            // Добавляем опцию обратно во все select'ы
+            const teacherOption = document.createElement('option');
+            teacherOption.value = teacherId;
+            teacherOption.textContent = teacherName;
+            
+            document.querySelectorAll(`select[id^="teacher-select-"]`).forEach(s => {
+                // Проверяем, что этого учителя еще нет в этом кабинете
+                const cabinetIdFromSelect = parseInt(s.id.replace('teacher-select-', '').replace('modal-', ''));
+                const teachersInCabinet = Array.from(
+                    document.querySelectorAll(`#teachers-list-${cabinetIdFromSelect} .teacher-badge, #teachers-list-modal-${cabinetIdFromSelect} .teacher-badge`)
+                ).map(b => parseInt(b.getAttribute('data-teacher-id')));
+                
+                if (!teachersInCabinet.includes(teacherId)) {
+                    // Проверяем, что опции еще нет
+                    const existing = Array.from(s.options).find(opt => opt.value === teacherId);
+                    if (!existing) {
+                        s.appendChild(teacherOption.cloneNode(true));
+                    }
+                }
+            });
+        } else {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при удалении учителя');
+    });
+}
+
+function createNewCabinet() {
+    const input = document.getElementById('newCabinetName');
+    const subjectSelect = document.getElementById('newCabinetSubject');
+    const subgroupsOnlyCheckbox = document.getElementById('newCabinetSubgroupsOnly');
+    const exclusiveToSubjectCheckbox = document.getElementById('newCabinetExclusiveToSubject');
+    const maxClassesSelect = document.getElementById('newCabinetMaxClasses');
+    const cabinetName = input.value.trim();
+    const subjectId = subjectSelect.value;
+    const subgroupsOnly = subgroupsOnlyCheckbox.checked;
+    const exclusiveToSubject = exclusiveToSubjectCheckbox.checked;
+    const maxClasses = parseInt(maxClassesSelect.value) || 1;
+    
+    if (!cabinetName) {
+        alert('Введите номер кабинета');
+        return;
+    }
+    
+    if (!subjectId) {
+        alert('Выберите предмет');
+        return;
+    }
+    
+    fetch('/admin/cabinets/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_name: cabinetName,
+            subject_id: parseInt(subjectId),
+            subgroups_only: subgroupsOnly,
+            exclusive_to_subject: exclusiveToSubject,
+            max_classes_simultaneously: maxClasses
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Закрываем модальное окно
+            const modal = bootstrap.Modal.getInstance(document.getElementById('addCabinetModal'));
+            modal.hide();
+            input.value = '';
+            subjectSelect.value = '';
+            subgroupsOnlyCheckbox.checked = false;
+            exclusiveToSubjectCheckbox.checked = false;
+            
+            // Перезагружаем страницу, чтобы показать новый кабинет
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при создании кабинета');
+    });
+}
+
+function updateSubgroupsOnly(cabinetId, subgroupsOnly) {
+    fetch('/admin/cabinets/update-subgroups-only', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId),
+            subgroups_only: subgroupsOnly
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            // Возвращаем чекбоксы в исходное состояние (и в аккордеоне, и в модальном окне)
+            const checkboxIds = [
+                `subgroups-only-${cabinetId}`,
+                `subgroups-only-modal-${cabinetId}`
+            ];
+            checkboxIds.forEach(id => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) {
+                    checkbox.checked = !subgroupsOnly;
+                }
+            });
+        } else {
+            // Синхронизируем состояние чекбоксов в обоих местах
+            const checkboxIds = [
+                `subgroups-only-${cabinetId}`,
+                `subgroups-only-modal-${cabinetId}`
+            ];
+            checkboxIds.forEach(id => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) {
+                    checkbox.checked = subgroupsOnly;
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при обновлении настройки кабинета');
+        // Возвращаем чекбоксы в исходное состояние
+        const checkboxIds = [
+            `subgroups-only-${cabinetId}`,
+            `subgroups-only-modal-${cabinetId}`
+        ];
+        checkboxIds.forEach(id => {
+            const checkbox = document.getElementById(id);
+            if (checkbox) {
+                checkbox.checked = !subgroupsOnly;
+            }
+        });
+    });
+}
+
+function updateExclusiveToSubject(cabinetId, exclusiveToSubject) {
+    fetch('/admin/cabinets/update-exclusive-to-subject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId),
+            exclusive_to_subject: exclusiveToSubject
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            // Возвращаем чекбоксы в исходное состояние (и в аккордеоне, и в модальном окне)
+            const checkboxIds = [
+                `exclusive-to-subject-${cabinetId}`,
+                `exclusive-to-subject-modal-${cabinetId}`
+            ];
+            checkboxIds.forEach(id => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) {
+                    checkbox.checked = !exclusiveToSubject;
+                }
+            });
+        } else {
+            // Синхронизируем состояние чекбоксов в обоих местах
+            const checkboxIds = [
+                `exclusive-to-subject-${cabinetId}`,
+                `exclusive-to-subject-modal-${cabinetId}`
+            ];
+            checkboxIds.forEach(id => {
+                const checkbox = document.getElementById(id);
+                if (checkbox) {
+                    checkbox.checked = exclusiveToSubject;
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при обновлении настройки кабинета');
+        // Возвращаем чекбоксы в исходное состояние
+        const checkboxIds = [
+            `exclusive-to-subject-${cabinetId}`,
+            `exclusive-to-subject-modal-${cabinetId}`
+        ];
+        checkboxIds.forEach(id => {
+            const checkbox = document.getElementById(id);
+            if (checkbox) {
+                checkbox.checked = !exclusiveToSubject;
+            }
+        });
+    });
+}
+
+function updateMaxClasses(cabinetId, maxClasses) {
+    fetch('/admin/cabinets/update-max-classes', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId),
+            max_classes_simultaneously: parseInt(maxClasses)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (!data.success) {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+            // Возвращаем select в исходное состояние
+            const selectIds = [
+                `max-classes-${cabinetId}`,
+                `max-classes-modal-${cabinetId}`
+            ];
+            selectIds.forEach(id => {
+                const select = document.getElementById(id);
+                if (select) {
+                    // Нужно получить старое значение из сервера или сохранить перед изменением
+                    // Пока просто показываем ошибку
+                }
+            });
+        } else {
+            // Синхронизируем состояние select в обоих местах
+            const selectIds = [
+                `max-classes-${cabinetId}`,
+                `max-classes-modal-${cabinetId}`
+            ];
+            selectIds.forEach(id => {
+                const select = document.getElementById(id);
+                if (select) {
+                    select.value = maxClasses;
+                }
+            });
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при обновлении настройки кабинета');
+    });
+}
+
+function deleteCabinet(cabinetId, cabinetName) {
+    if (!confirm(`Вы уверены, что хотите удалить кабинет "${cabinetName}"?\n\nВнимание: Кабинет можно удалить только если он не используется в расписании.`)) {
+        return;
+    }
+    
+    fetch('/admin/cabinets/delete', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            cabinet_id: parseInt(cabinetId)
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            // Удаляем карточку кабинета из DOM
+            const card = document.querySelector(`.card[data-cabinet-id="${cabinetId}"]`);
+            if (card) {
+                card.remove();
+                
+                // Проверяем, остались ли кабинеты в этом предмете
+                const accordionBody = card.closest('.accordion-body');
+                if (accordionBody) {
+                    const remainingCards = accordionBody.querySelectorAll('.card[data-cabinet-id]');
+                    if (remainingCards.length === 0) {
+                        // Если кабинетов не осталось, перезагружаем страницу
+                        location.reload();
+                    }
+                }
+            } else {
+                // Если не нашли, перезагружаем страницу
+                location.reload();
+            }
+            
+            // Показываем сообщение об успехе
+            alert(data.message || 'Кабинет успешно удален');
+        } else {
+            alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при удалении кабинета');
+    });
+}
+
+function deleteAllCabinets() {
+    const totalCabinets = document.querySelectorAll('.card[data-cabinet-id]').length;
+    
+    if (totalCabinets === 0) {
+        alert('Нет кабинетов для удаления');
+        return;
+    }
+    
+    const confirmMessage = `Вы уверены, что хотите удалить ВСЕ кабинеты (${totalCabinets})?\n\n` +
+                          `⚠️ ВНИМАНИЕ:\n` +
+                          `- Кабинеты, используемые в расписании, не будут удалены\n` +
+                          `- Все связи с учителями будут удалены\n` +
+                          `- Это действие нельзя отменить!`;
+    
+    if (!confirm(confirmMessage)) {
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    const button = event.target.closest('button');
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<i class="bi bi-hourglass-split"></i> Удаление...';
+    
+    fetch('/admin/cabinets/delete-all', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            force: false
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        
+        if (data.success) {
+            let message = data.message || `Успешно удалено кабинетов: ${data.deleted_count}`;
+            
+            if (data.skipped_count > 0) {
+                message += `\n\nПропущено используемых кабинетов: ${data.skipped_count}`;
+            }
+            
+            alert(message);
+            
+            // Перезагружаем страницу, чтобы обновить список
+            location.reload();
+        } else {
+            let errorMessage = data.error || 'Неизвестная ошибка';
+            
+            if (data.used_cabinets && data.used_cabinets.length > 0) {
+                errorMessage += `\n\nИспользуемые кабинеты:\n${data.used_cabinets.slice(0, 10).join(', ')}`;
+                if (data.used_cabinets.length > 10) {
+                    errorMessage += `\n... и еще ${data.used_cabinets.length - 10}`;
+                }
+            }
+            
+            alert('Ошибка: ' + errorMessage);
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        console.error('Error:', error);
+        alert('Ошибка при удалении кабинетов');
+    });
+}
+</script>
+{% endblock %}

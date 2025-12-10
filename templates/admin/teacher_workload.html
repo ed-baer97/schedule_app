@@ -1,0 +1,213 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row">
+    <div class="col-12">
+        <h2 class="mb-4">
+            <i class="bi bi-person-check"></i> Нагрузка учителей
+            <small class="text-muted">({{ active_shift.name }})</small>
+        </h2>
+        
+        <div class="alert alert-info">
+            <i class="bi bi-info-circle"></i> 
+            Здесь отображается общая нагрузка каждого учителя в неделю, рассчитанная на основе назначений учителей на предметы в классах.
+        </div>
+        
+        <div class="row mb-3">
+            <div class="col-md-6">
+                <div class="input-group">
+                    <span class="input-group-text"><i class="bi bi-search"></i></span>
+                    <input type="text" class="form-control" id="searchTeacher" placeholder="Поиск по имени учителя...">
+                </div>
+            </div>
+            <div class="col-md-6 text-end">
+                <div class="btn-group">
+                    <button class="btn btn-outline-secondary" onclick="sortByHours()">
+                        <i class="bi bi-sort-numeric-down"></i> Сортировать по часам
+                    </button>
+                    <button class="btn btn-outline-secondary" onclick="sortByName()">
+                        <i class="bi bi-sort-alpha-down"></i> Сортировать по имени
+                    </button>
+                </div>
+            </div>
+        </div>
+        
+        <div class="table-responsive">
+            <table class="table table-bordered table-hover" id="teacherWorkloadTable">
+                <thead class="table-light">
+                    <tr>
+                        <th>№</th>
+                        <th>Учитель</th>
+                        <th class="text-center">Всего часов/неделю</th>
+                        <th>Назначения</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for item in teacher_workload %}
+                    <tr class="teacher-row" data-teacher-name="{{ item.teacher.full_name|lower }}">
+                        <td>{{ loop.index }}</td>
+                        <td>
+                            <strong>{{ item.teacher.full_name }}</strong>
+                            {% if item.teacher.short_name %}
+                            <br><small class="text-muted">{{ item.teacher.short_name }}</small>
+                            {% endif %}
+                        </td>
+                        <td class="text-center">
+                            <span class="badge bg-{% if item.total_hours >= 25 %}danger{% elif item.total_hours >= 18 %}warning{% else %}success{% endif %} fs-6">
+                                {{ item.total_hours }} ч/нед
+                            </span>
+                        </td>
+                        <td>
+                            {% if item.assignments %}
+                            <div class="d-flex flex-wrap gap-2">
+                                {% for assignment in item.assignments %}
+                                <span class="badge bg-secondary">
+                                    {{ assignment.subject }} ({{ assignment.class }}) - {{ assignment.hours }} ч
+                                </span>
+                                {% endfor %}
+                            </div>
+                            {% else %}
+                            <span class="text-muted">Нет назначений</span>
+                            {% endif %}
+                        </td>
+                    </tr>
+                    {% endfor %}
+                    {% if not teacher_workload %}
+                    <tr>
+                        <td colspan="4" class="text-center text-muted">
+                            Нет данных о нагрузке учителей
+                        </td>
+                    </tr>
+                    {% endif %}
+                </tbody>
+                <tfoot class="table-secondary">
+                    <tr>
+                        <th colspan="2">Итого:</th>
+                        <th class="text-center">
+                            <span class="badge bg-primary fs-6">
+                                {{ total_hours_all }} ч/нед
+                            </span>
+                        </th>
+                        <th>
+                            <span class="text-muted">
+                                {{ teacher_workload|length }} учителей
+                            </span>
+                        </th>
+                    </tr>
+                </tfoot>
+            </table>
+        </div>
+        
+        <div class="mt-3">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0"><i class="bi bi-bar-chart"></i> Статистика</h5>
+                </div>
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-3">
+                            <strong>Средняя нагрузка:</strong><br>
+                            <span class="fs-4">
+                                {{ avg_hours }} ч/нед
+                            </span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Максимальная нагрузка:</strong><br>
+                            <span class="fs-4 text-danger">
+                                {{ max_hours }} ч/нед
+                            </span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Минимальная нагрузка:</strong><br>
+                            <span class="fs-4 text-success">
+                                {{ min_hours }} ч/нед
+                            </span>
+                        </div>
+                        <div class="col-md-3">
+                            <strong>Учителей с нагрузкой ≥ 18 ч:</strong><br>
+                            <span class="fs-4">
+                                {{ teachers_high_load }}
+                            </span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Поиск по имени учителя
+document.getElementById('searchTeacher').addEventListener('input', function() {
+    const searchTerm = this.value.toLowerCase();
+    const rows = document.querySelectorAll('.teacher-row');
+    
+    rows.forEach(row => {
+        const teacherName = row.dataset.teacherName;
+        if (teacherName.includes(searchTerm)) {
+            row.style.display = '';
+        } else {
+            row.style.display = 'none';
+        }
+    });
+});
+
+// Сортировка по часам (уже отсортировано на сервере по убыванию)
+let sortByHoursAsc = false;
+function sortByHours() {
+    const tbody = document.querySelector('#teacherWorkloadTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('.teacher-row'));
+    
+    rows.sort((a, b) => {
+        const hoursA = parseInt(a.querySelector('.badge').textContent);
+        const hoursB = parseInt(b.querySelector('.badge').textContent);
+        return sortByHoursAsc ? hoursA - hoursB : hoursB - hoursA;
+    });
+    
+    sortByHoursAsc = !sortByHoursAsc;
+    
+    rows.forEach(row => tbody.appendChild(row));
+    
+    // Обновляем номера
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+    });
+}
+
+// Сортировка по имени
+let sortByNameAsc = true;
+function sortByName() {
+    const tbody = document.querySelector('#teacherWorkloadTable tbody');
+    const rows = Array.from(tbody.querySelectorAll('.teacher-row'));
+    
+    rows.sort((a, b) => {
+        const nameA = a.dataset.teacherName;
+        const nameB = b.dataset.teacherName;
+        return sortByNameAsc ? nameA.localeCompare(nameB) : nameB.localeCompare(nameA);
+    });
+    
+    sortByNameAsc = !sortByNameAsc;
+    
+    rows.forEach(row => tbody.appendChild(row));
+    
+    // Обновляем номера
+    rows.forEach((row, index) => {
+        row.querySelector('td:first-child').textContent = index + 1;
+    });
+}
+</script>
+
+<style>
+#teacherWorkloadTable {
+    font-size: 0.95rem;
+}
+
+#teacherWorkloadTable tbody tr:hover {
+    background-color: #f8f9fa;
+}
+
+.badge {
+    font-weight: 500;
+}
+</style>
+{% endblock %}
+

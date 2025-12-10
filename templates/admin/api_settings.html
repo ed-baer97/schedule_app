@@ -1,0 +1,133 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-3">
+            <i class="bi bi-plug"></i> Настройки API
+        </h2>
+        <p class="text-muted">Настройка Telegram бота</p>
+    </div>
+</div>
+
+<div class="row">
+    <div class="col-lg-8">
+        <!-- Настройки Telegram -->
+        <div class="card shadow-sm">
+            <div class="card-header bg-info text-white">
+                <h5 class="mb-0"><i class="bi bi-telegram"></i> Настройки Telegram бота</h5>
+            </div>
+            <div class="card-body">
+                <div class="alert alert-info">
+                    <i class="bi bi-info-circle"></i> 
+                    <strong>Информация:</strong> Если вы не укажете токен, будет использоваться глобальный токен из конфигурации системы.
+                </div>
+                
+                <form id="telegramSettingsForm">
+                    <div class="mb-3">
+                        <label for="telegramToken" class="form-label">
+                            <i class="bi bi-key"></i> Токен Telegram бота
+                        </label>
+                        <input type="password" class="form-control" id="telegramToken" 
+                               placeholder="Введите токен бота из @BotFather"
+                               value="{{ school.telegram_bot_token if school.telegram_bot_token else '' }}">
+                        <small class="text-muted">Оставьте пустым, чтобы использовать глобальный токен. Формат: 123456789:ABCdefGHIjklMNOpqrsTUVwxyz</small>
+                    </div>
+                    
+                    <div class="d-flex gap-2">
+                        <button type="button" class="btn btn-info" onclick="saveAPISettings()">
+                            <i class="bi bi-save"></i> Сохранить настройки
+                        </button>
+                        <button type="button" class="btn btn-outline-info" onclick="testTelegramToken()">
+                            <i class="bi bi-check-circle"></i> Тестировать Telegram
+                        </button>
+                    </div>
+                </form>
+                
+                <div id="telegramSettingsMessage" class="mt-3"></div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="col-lg-4">
+        <div class="card shadow-sm">
+            <div class="card-header bg-secondary text-white">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Справка</h5>
+            </div>
+            <div class="card-body">
+                <h6>Как получить токен Telegram:</h6>
+                <ol class="small">
+                    <li>Откройте <a href="https://t.me/BotFather" target="_blank">@BotFather</a> в Telegram</li>
+                    <li>Отправьте команду <code>/newbot</code></li>
+                    <li>Следуйте инструкциям для создания бота</li>
+                    <li>Скопируйте токен, который выдаст BotFather</li>
+                </ol>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+function saveAPISettings() {
+    const telegramToken = document.getElementById('telegramToken').value.trim();
+    const telegramMessageDiv = document.getElementById('telegramSettingsMessage');
+    
+    telegramMessageDiv.innerHTML = '<div class="alert alert-info">Сохранение...</div>';
+    
+    fetch('/admin/api-settings/save', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            telegram_token: telegramToken
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            telegramMessageDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle"></i> ' + 
+                                      (result.message || 'Настройки успешно сохранены') + '</div>';
+        } else {
+            telegramMessageDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ' + 
+                                      (result.error || 'Ошибка при сохранении') + '</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        telegramMessageDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Ошибка при сохранении настроек</div>';
+    });
+}
+
+function testTelegramToken() {
+    const token = document.getElementById('telegramToken').value.trim();
+    const messageDiv = document.getElementById('telegramSettingsMessage');
+    
+    if (!token) {
+        messageDiv.innerHTML = '<div class="alert alert-warning"><i class="bi bi-exclamation-triangle"></i> Введите токен для тестирования</div>';
+        return;
+    }
+    
+    messageDiv.innerHTML = '<div class="alert alert-info">Тестирование подключения...</div>';
+    
+    fetch('/admin/api-settings/test-telegram', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            telegram_token: token
+        })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            messageDiv.innerHTML = '<div class="alert alert-success"><i class="bi bi-check-circle"></i> ' + 
+                                  (result.message || 'Тест успешен!') + '</div>';
+        } else {
+            messageDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> ' + 
+                                  (result.error || 'Ошибка при тестировании') + '</div>';
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        messageDiv.innerHTML = '<div class="alert alert-danger"><i class="bi bi-exclamation-triangle"></i> Ошибка при тестировании подключения</div>';
+    });
+}
+</script>
+{% endblock %}

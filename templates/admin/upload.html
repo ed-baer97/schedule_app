@@ -1,0 +1,190 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row justify-content-center">
+    <div class="col-md-8">
+        <div class="card">
+            <div class="card-header"><h4>Загрузка данных из Excel</h4></div>
+            <div class="card-body">
+                <form method="post" enctype="multipart/form-data">
+                    <div class="mb-4">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <label class="form-label fw-bold mb-0">Смена</label>
+                            <button type="button" class="btn btn-sm btn-primary" data-bs-toggle="modal" data-bs-target="#addShiftModal">
+                                <i class="bi bi-plus-circle"></i> Добавить смену
+                            </button>
+                        </div>
+                        <select name="shift_id" class="form-select">
+                            <option value="">Автоматически из файла (каждый лист = смена)</option>
+                            {% for shift in shifts %}
+                                <option value="{{ shift.id }}" {% if shift.is_active %}selected{% endif %}>{{ shift.name }}</option>
+                            {% endfor %}
+                        </select>
+                        <small class="text-muted">
+                            <strong>Важно:</strong> Если смена не выбрана, система автоматически создаст смены на основе названий листов в файле "Часы_Класс_Предмет". 
+                            Каждый лист Excel будет отдельной сменой. К смене привязаны только классы.
+                        </small>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">1. Файл "Часы_Класс_Предмет"</label>
+                        <div class="input-group">
+                            <input type="file" name="class_load" id="class_load" class="form-control" accept=".xlsx,.xls">
+                            <button type="button" class="btn btn-primary" onclick="uploadSingleFile('class_load', '/admin/upload/class-load')">
+                                <i class="bi bi-upload"></i> Загрузить
+                            </button>
+                        </div>
+                        <small class="text-muted">Матрица: <strong>строки</strong> = классы, <strong>столбцы</strong> = предметы, <strong>ячейки</strong> = количество часов</small>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">2. Файл "Учителя_Предмет"</label>
+                        <div class="input-group">
+                            <input type="file" name="teacher_assign" id="teacher_assign" class="form-control" accept=".xlsx,.xls">
+                            <button type="button" class="btn btn-primary" onclick="uploadSingleFile('teacher_assign', '/admin/upload/teacher-assign')">
+                                <i class="bi bi-upload"></i> Загрузить
+                            </button>
+                        </div>
+                        <small class="text-muted">Матрица: <strong>столбцы</strong> = предметы, в <strong>ячейках</strong> = учителя, которые преподают этот предмет (можно несколько через запятую)</small>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">3. Файл "Учителя_Контакты" (необязательно)</label>
+                        <div class="input-group">
+                            <input type="file" name="teacher_contacts" id="teacher_contacts" class="form-control" accept=".xlsx,.xls">
+                            <button type="button" class="btn btn-success" onclick="uploadSingleFile('teacher_contacts', '/admin/upload/teacher-contacts')">
+                                <i class="bi bi-upload"></i> Загрузить
+                            </button>
+                        </div>
+                        <small class="text-muted">Файл с контактами учителей: столбцы с <strong>именем учителя</strong>, <strong>телефоном</strong> и <strong>Telegram ID</strong>. Обновляет контакты существующих учителей или создает новых.</small>
+                    </div>
+                    <div class="mb-4">
+                        <label class="form-label fw-bold">4. Файл "Учителя_Кабинет" (необязательно)</label>
+                        <div class="input-group">
+                            <input type="file" name="teacher_cabinets" id="teacher_cabinets" class="form-control" accept=".xlsx,.xls">
+                            <button type="button" class="btn btn-success" onclick="uploadSingleFile('teacher_cabinets', '/admin/upload/teacher-cabinets')">
+                                <i class="bi bi-upload"></i> Загрузить
+                            </button>
+                        </div>
+                        <small class="text-muted">Файл с кабинетами и учителями: столбцы <strong>№</strong>, <strong>Кабинет</strong>, <strong>Учителя</strong> (список через запятую). <strong>ВАЖНО:</strong> Использует только существующих учителей из БД, дубли не создаются.</small>
+                    </div>
+                    <hr>
+                    <div class="d-flex gap-2">
+                        <button type="submit" class="btn btn-primary btn-lg">
+                            <i class="bi bi-upload"></i> Загрузить все выбранные файлы
+                        </button>
+                        <button type="button" class="btn btn-secondary btn-lg" onclick="clearFileInputs()">
+                            <i class="bi bi-x-circle"></i> Очистить
+                        </button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Добавить смену -->
+<div class="modal fade" id="addShiftModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Добавить смену</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="addShiftForm">
+                    <div class="mb-3">
+                        <label for="shiftName" class="form-label">Название смены *</label>
+                        <input type="text" class="form-control" id="shiftName" required placeholder="Например: Первая смена">
+                        <small class="text-muted">К смене привязаны только классы. Классы будут назначены при загрузке файла "Часы_Класс_Предмет".</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Создать</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Форма добавления смены
+document.getElementById('addShiftForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const data = {
+        name: document.getElementById('shiftName').value.trim()
+    };
+
+    fetch('/admin/schedule/shift/add', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            bootstrap.Modal.getInstance(document.getElementById('addShiftModal')).hide();
+            location.reload();
+        } else {
+            alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при создании смены');
+    });
+});
+
+// Функция для загрузки одного файла
+function uploadSingleFile(inputId, url) {
+    const input = document.getElementById(inputId);
+    if (!input.files || input.files.length === 0) {
+        alert('Выберите файл для загрузки');
+        return;
+    }
+    
+    const file = input.files[0];
+    const formData = new FormData();
+    formData.append('file', file);
+    
+    // Получаем shift_id из формы
+    const shiftId = document.querySelector('select[name="shift_id"]').value;
+    if (shiftId) {
+        formData.append('shift_id', shiftId);
+    }
+    
+    // Показываем индикатор загрузки
+    const button = input.nextElementSibling;
+    const originalText = button.innerHTML;
+    button.disabled = true;
+    button.innerHTML = '<span class="spinner-border spinner-border-sm" role="status"></span> Загрузка...';
+    
+    fetch(url, {
+        method: 'POST',
+        body: formData
+    })
+    .then(response => response.json())
+    .then(data => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        
+        if (data.success) {
+            alert('✅ ' + (data.message || 'Файл загружен успешно!'));
+            // Очищаем поле ввода
+            input.value = '';
+        } else {
+            alert('❌ Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        button.disabled = false;
+        button.innerHTML = originalText;
+        console.error('Error:', error);
+        alert('❌ Ошибка при загрузке файла');
+    });
+}
+
+// Функция для очистки всех полей ввода
+function clearFileInputs() {
+    document.getElementById('class_load').value = '';
+    document.getElementById('teacher_assign').value = '';
+    document.getElementById('teacher_contacts').value = '';
+    document.getElementById('teacher_cabinets').value = '';
+}
+</script>
+{% endblock %}

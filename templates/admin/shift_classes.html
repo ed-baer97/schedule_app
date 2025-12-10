@@ -1,0 +1,356 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="container-fluid">
+    <div class="row">
+        <div class="col-12">
+            <div class="d-flex justify-content-between align-items-center mb-3">
+                <div>
+                    <h2 class="mb-1"><i class="bi bi-people"></i> Классы смены</h2>
+                    <p class="text-muted mb-0">Назначьте классы для смены. Только назначенные классы будут использоваться при генерации расписания.</p>
+                </div>
+                <a href="{{ url_for('api.schedule') }}" class="btn btn-secondary">
+                    <i class="bi bi-arrow-left"></i> Назад к расписанию
+                </a>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-md-3">
+                            <label for="shiftSelect" class="form-label mb-0"><strong>Выберите смену:</strong></label>
+                        </div>
+                        <div class="col-md-6">
+                            <select class="form-select" id="shiftSelect">
+                                {% for s in all_shifts %}
+                                <option value="{{ s.id }}" {% if s.id == shift.id %}selected{% endif %}>
+                                    {{ s.name }}{% if s.is_active %} (активна){% endif %}
+                                </option>
+                                {% endfor %}
+                            </select>
+                        </div>
+                        <div class="col-md-3">
+                            <button class="btn btn-primary w-100" id="switchShiftBtn">
+                                <i class="bi bi-arrow-repeat"></i> Переключить
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="card mb-3">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <h5 class="mb-0"><i class="bi bi-calendar-week"></i> Смена: <strong>{{ shift.name }}</strong>{% if shift.is_active %} <span class="badge bg-success">Активна</span>{% endif %}</h5>
+                    <div>
+                        <span id="saveStatus" class="badge bg-secondary me-2" style="display: none;">
+                            <i class="bi bi-check-circle"></i> Все изменения сохранены
+                        </span>
+                        <button class="btn btn-success btn-sm" id="saveClassesBtn" disabled>
+                            <i class="bi bi-save"></i> Сохранить изменения
+                        </button>
+                    </div>
+                </div>
+            
+                <div class="card-body">
+                    <div class="row">
+                        <div class="col-md-6">
+                            <h5 class="mb-3">Назначенные классы</h5>
+                            <div id="assignedClasses" class="list-group mb-3">
+                                {% for class in all_classes %}
+                                    {% if class.id in assigned_class_ids %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center" data-class-id="{{ class.id }}">
+                                        <span><strong>{{ class.name }}</strong></span>
+                                        <button class="btn btn-sm btn-danger remove-class-btn" data-class-id="{{ class.id }}" data-class-name="{{ class.name }}">
+                                            <i class="bi bi-x-circle"></i> Убрать
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                                {% if not assigned_class_ids %}
+                                <div class="alert alert-info">
+                                    <i class="bi bi-info-circle"></i> Нет назначенных классов. Добавьте классы из списка справа.
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                        <div class="col-md-6">
+                            <h5 class="mb-3">Доступные классы</h5>
+                            <div id="availableClasses" class="list-group">
+                                {% for class in all_classes %}
+                                    {% if class.id not in assigned_class_ids %}
+                                    <div class="list-group-item d-flex justify-content-between align-items-center" data-class-id="{{ class.id }}">
+                                        <span>{{ class.name }}</span>
+                                        <button class="btn btn-sm btn-primary assign-class-btn" data-class-id="{{ class.id }}" data-class-name="{{ class.name }}">
+                                            <i class="bi bi-plus-circle"></i> Добавить
+                                        </button>
+                                    </div>
+                                    {% endif %}
+                                {% endfor %}
+                                {% if not all_classes %}
+                                <div class="alert alert-warning">
+                                    <i class="bi bi-exclamation-triangle"></i> Нет доступных классов. Создайте классы в разделе "Классы".
+                                </div>
+                                {% endif %}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let shiftId = {{ shift.id }};
+const allShifts = {{ all_shifts|map(attribute='id')|list|tojson|safe }};
+let hasUnsavedChanges = false;
+
+// Функция для обновления статуса сохранения
+function updateSaveStatus() {
+    const saveBtn = document.getElementById('saveClassesBtn');
+    const saveStatus = document.getElementById('saveStatus');
+    
+    if (hasUnsavedChanges) {
+        saveBtn.disabled = false;
+        saveBtn.classList.remove('btn-success');
+        saveBtn.classList.add('btn-warning');
+        saveBtn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> Есть несохраненные изменения';
+        saveStatus.style.display = 'none';
+    } else {
+        saveBtn.disabled = true;
+        saveBtn.classList.remove('btn-warning');
+        saveBtn.classList.add('btn-success');
+        saveBtn.innerHTML = '<i class="bi bi-save"></i> Сохранить изменения';
+        saveStatus.style.display = 'inline-block';
+        setTimeout(() => {
+            saveStatus.style.display = 'none';
+        }, 3000);
+    }
+}
+
+// Кнопка сохранения
+document.getElementById('saveClassesBtn').addEventListener('click', function() {
+    if (!hasUnsavedChanges) {
+        return;
+    }
+    
+    // Показываем индикатор загрузки
+    const btn = this;
+    const originalText = btn.innerHTML;
+    btn.disabled = true;
+    btn.innerHTML = '<span class="spinner-border spinner-border-sm"></span> Сохранение...';
+    
+    // В реальности изменения уже сохранены через AJAX,
+    // но мы можем показать подтверждение
+    setTimeout(() => {
+        hasUnsavedChanges = false;
+        updateSaveStatus();
+        btn.innerHTML = originalText;
+        
+        // Показываем уведомление об успешном сохранении
+        const alertDiv = document.createElement('div');
+        alertDiv.className = 'alert alert-success alert-dismissible fade show position-fixed top-0 start-50 translate-middle-x mt-3';
+        alertDiv.style.zIndex = '9999';
+        alertDiv.innerHTML = `
+            <i class="bi bi-check-circle"></i> Изменения успешно сохранены!
+            <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+        `;
+        document.body.appendChild(alertDiv);
+        
+        setTimeout(() => {
+            alertDiv.remove();
+        }, 3000);
+    }, 500);
+});
+
+// Переключение смены
+document.getElementById('switchShiftBtn').addEventListener('click', function() {
+    const selectedShiftId = parseInt(document.getElementById('shiftSelect').value);
+    if (selectedShiftId !== shiftId) {
+        window.location.href = `/admin/shift/${selectedShiftId}/classes`;
+    }
+});
+
+// Автоматическое переключение при изменении селекта (опционально)
+document.getElementById('shiftSelect').addEventListener('change', function() {
+    const selectedShiftId = parseInt(this.value);
+    if (selectedShiftId !== shiftId) {
+        if (confirm('Переключить на другую смену? Несохраненные изменения будут потеряны.')) {
+            window.location.href = `/admin/shift/${selectedShiftId}/classes`;
+        } else {
+            // Возвращаем предыдущее значение
+            this.value = shiftId;
+        }
+    }
+});
+
+// Назначить класс смене
+document.querySelectorAll('.assign-class-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const classId = this.getAttribute('data-class-id');
+        const className = this.getAttribute('data-class-name');
+        
+        fetch(`/admin/shift/${shiftId}/classes/assign`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ class_id: parseInt(classId) })
+        })
+        .then(r => r.json())
+        .then(result => {
+            if (result.success) {
+                // Перемещаем класс из доступных в назначенные
+                const item = this.closest('.list-group-item');
+                item.remove();
+                
+                // Добавляем в назначенные
+                const assignedContainer = document.getElementById('assignedClasses');
+                const newItem = document.createElement('div');
+                newItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                newItem.setAttribute('data-class-id', classId);
+                newItem.innerHTML = `
+                    <span><strong>${className}</strong></span>
+                    <button class="btn btn-sm btn-danger remove-class-btn" data-class-id="${classId}" data-class-name="${className}">
+                        <i class="bi bi-x-circle"></i> Убрать
+                    </button>
+                `;
+                assignedContainer.appendChild(newItem);
+                
+                // Добавляем обработчик для новой кнопки
+                newItem.querySelector('.remove-class-btn').addEventListener('click', function() {
+                    removeClassFromShift(this.getAttribute('data-class-id'), this.getAttribute('data-class-name'));
+                });
+                
+                // Убираем сообщение "нет назначенных классов", если оно есть
+                const infoAlert = assignedContainer.querySelector('.alert-info');
+                if (infoAlert) {
+                    infoAlert.remove();
+                }
+                
+                // Отмечаем, что есть несохраненные изменения (хотя они уже сохранены через AJAX)
+                // Это для UX - показываем, что действие выполнено
+                hasUnsavedChanges = false; // Изменения уже сохранены через AJAX
+                updateSaveStatus();
+            } else {
+                alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка:', error);
+            alert('Ошибка при назначении класса');
+        });
+    });
+});
+
+// Убрать класс из смены
+function removeClassFromShift(classId, className) {
+    if (!confirm(`Убрать класс ${className} из смены?`)) {
+        return;
+    }
+    
+    fetch(`/admin/shift/${shiftId}/classes/remove`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ class_id: parseInt(classId) })
+    })
+    .then(r => r.json())
+    .then(result => {
+        if (result.success) {
+            // Перемещаем класс из назначенных в доступные
+            const item = document.querySelector(`[data-class-id="${classId}"]`);
+            if (item) {
+                item.remove();
+                
+                // Добавляем в доступные
+                const availableContainer = document.getElementById('availableClasses');
+                const newItem = document.createElement('div');
+                newItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                newItem.setAttribute('data-class-id', classId);
+                newItem.innerHTML = `
+                    <span>${className}</span>
+                    <button class="btn btn-sm btn-primary assign-class-btn" data-class-id="${classId}" data-class-name="${className}">
+                        <i class="bi bi-plus-circle"></i> Добавить
+                    </button>
+                `;
+                availableContainer.appendChild(newItem);
+                
+                // Добавляем обработчик для новой кнопки
+                newItem.querySelector('.assign-class-btn').addEventListener('click', function() {
+                    const btn = this;
+                    const classId = btn.getAttribute('data-class-id');
+                    const className = btn.getAttribute('data-class-name');
+                    
+                    fetch(`/admin/shift/${shiftId}/classes/assign`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ class_id: parseInt(classId) })
+                    })
+                    .then(r => r.json())
+                    .then(result => {
+                        if (result.success) {
+                            // Перемещаем класс из доступных в назначенные
+                            const item = btn.closest('.list-group-item');
+                            item.remove();
+                            
+                            // Добавляем в назначенные
+                            const assignedContainer = document.getElementById('assignedClasses');
+                            const newItem = document.createElement('div');
+                            newItem.className = 'list-group-item d-flex justify-content-between align-items-center';
+                            newItem.setAttribute('data-class-id', classId);
+                            newItem.innerHTML = `
+                                <span><strong>${className}</strong></span>
+                                <button class="btn btn-sm btn-danger remove-class-btn" data-class-id="${classId}" data-class-name="${className}">
+                                    <i class="bi bi-x-circle"></i> Убрать
+                                </button>
+                            `;
+                            assignedContainer.appendChild(newItem);
+                            
+                            // Добавляем обработчик для новой кнопки
+                            newItem.querySelector('.remove-class-btn').addEventListener('click', function() {
+                                removeClassFromShift(this.getAttribute('data-class-id'), this.getAttribute('data-class-name'));
+                            });
+                            
+                            // Убираем сообщение "нет назначенных классов", если оно есть
+                            const infoAlert = assignedContainer.querySelector('.alert-info');
+                            if (infoAlert) {
+                                infoAlert.remove();
+                            }
+                            
+                            hasUnsavedChanges = false; // Изменения уже сохранены через AJAX
+                            updateSaveStatus();
+                        } else {
+                            alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+                        }
+                    });
+                });
+                
+                // Если назначенных классов не осталось, показываем сообщение
+                const assignedContainer = document.getElementById('assignedClasses');
+                if (assignedContainer.querySelectorAll('.list-group-item').length === 0) {
+                    assignedContainer.innerHTML = `
+                        <div class="alert alert-info">
+                            <i class="bi bi-info-circle"></i> Нет назначенных классов. Добавьте классы из списка справа.
+                        </div>
+                    `;
+                }
+                
+                hasUnsavedChanges = false; // Изменения уже сохранены через AJAX
+                updateSaveStatus();
+            }
+        } else {
+            alert('Ошибка: ' + (result.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Ошибка:', error);
+        alert('Ошибка при удалении класса из смены');
+    });
+}
+
+// Обработчики для уже существующих кнопок "Убрать"
+document.querySelectorAll('.remove-class-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        removeClassFromShift(this.getAttribute('data-class-id'), this.getAttribute('data-class-name'));
+    });
+});
+</script>
+{% endblock %}
+

@@ -1,0 +1,271 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>Учителя</h2>
+    <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTeacherModal">
+        <i class="bi bi-plus-circle"></i> Создать нового учителя
+    </button>
+</div>
+
+{% if teachers %}
+<div class="list-group">
+    {% for teacher in teachers %}
+    <div class="list-group-item d-flex justify-content-between align-items-center">
+        <div class="flex-grow-1">
+            <h5 class="mb-1">{{ teacher.full_name }}</h5>
+            <p class="mb-0 text-muted">
+                <i class="bi bi-telephone"></i> 
+                <span id="phone-{{ teacher.id }}">{{ teacher.phone or 'Не указан' }}</span>
+                {% if teacher.short_name %}
+                <br><i class="bi bi-person-badge"></i> 
+                <span class="text-muted">{{ teacher.short_name }}</span>
+                {% endif %}
+                {% if teacher.telegram_id %}
+                <br><i class="bi bi-telegram"></i> 
+                <span class="text-success">{{ teacher.telegram_id }}</span>
+                {% else %}
+                <br><i class="bi bi-telegram"></i> 
+                <span class="text-muted">Telegram не настроен</span>
+                {% endif %}
+            </p>
+            <div class="mt-2">
+                <small class="text-muted">
+                    <i class="bi bi-mortarboard"></i> Классы: 
+                    {% if teacher.classes_names %}
+                        {% for class_name in teacher.classes_names %}
+                            <span class="badge bg-info me-1">{{ class_name }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">Не назначены</span>
+                    {% endif %}
+                </small>
+            </div>
+            <div class="mt-2">
+                <small class="text-muted">
+                    <i class="bi bi-door-open"></i> Кабинеты: 
+                    {% if teacher.cabinets_list %}
+                        {% for cabinet_name in teacher.cabinets_list %}
+                            <span class="badge bg-primary me-1">{{ cabinet_name }}</span>
+                        {% endfor %}
+                    {% else %}
+                        <span class="text-muted">Не назначены</span>
+                    {% endif %}
+                </small>
+            </div>
+        </div>
+        <div class="btn-group">
+            <button class="btn btn-primary btn-sm edit-teacher-btn" 
+                    data-teacher-id="{{ teacher.id }}"
+                    data-teacher-name="{{ teacher.full_name }}"
+                    data-teacher-phone="{{ teacher.phone or '' }}"
+                    data-teacher-telegram="{{ teacher.telegram_id or '' }}">
+                <i class="bi bi-pencil"></i> Редактировать
+            </button>
+            <button class="btn btn-danger btn-sm delete-teacher-btn" 
+                    data-teacher-id="{{ teacher.id }}" 
+                    data-teacher-name="{{ teacher.full_name }}">
+                <i class="bi bi-trash"></i> Удалить
+            </button>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% else %}
+<div class="alert alert-info">
+    <p class="mb-0">Нет учителей в базе данных.</p>
+    <p class="mb-0">Нажмите кнопку "Создать нового учителя" чтобы начать.</p>
+</div>
+{% endif %}
+
+<!-- Модальное окно: создать нового учителя -->
+<div class="modal fade" id="createTeacherModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Создать нового учителя</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="createTeacherForm">
+                    <div class="mb-3">
+                        <label for="teacherFullName" class="form-label">Полное имя *</label>
+                        <input type="text" class="form-control" id="teacherFullName" required 
+                               placeholder="Иванов Иван Иванович">
+                    </div>
+                    <div class="mb-3">
+                        <label for="teacherPhone" class="form-label">Номер телефона</label>
+                        <input type="tel" class="form-control" id="teacherPhone" 
+                               placeholder="+7 (999) 123-45-67">
+                    </div>
+                    <div class="mb-3">
+                        <label for="teacherTelegram" class="form-label">Telegram ID</label>
+                        <input type="text" class="form-control" id="teacherTelegram" 
+                               placeholder="@username или числовой ID">
+                        <small class="text-muted">ID пользователя Telegram для рассылки расписания</small>
+                    </div>
+                    <button type="submit" class="btn btn-success w-100">Создать учителя</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: редактировать учителя -->
+<div class="modal fade" id="editTeacherModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Редактировать учителя</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editTeacherForm">
+                    <input type="hidden" id="editTeacherId">
+                    <div class="mb-3">
+                        <label for="editTeacherFullName" class="form-label">Полное имя *</label>
+                        <input type="text" class="form-control" id="editTeacherFullName" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="editTeacherPhone" class="form-label">Номер телефона</label>
+                        <input type="tel" class="form-control" id="editTeacherPhone" 
+                               placeholder="+7 (999) 123-45-67">
+                    </div>
+                    <div class="mb-3">
+                        <label for="editTeacherTelegram" class="form-label">Telegram ID</label>
+                        <input type="text" class="form-control" id="editTeacherTelegram" 
+                               placeholder="@username или числовой ID">
+                        <small class="text-muted">ID пользователя Telegram для рассылки расписания</small>
+                    </div>
+                    <button type="submit" class="btn btn-primary w-100">Сохранить изменения</button>
+                </form>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Создание нового учителя
+document.getElementById('createTeacherForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const fullName = document.getElementById('teacherFullName').value.trim();
+    const phone = document.getElementById('teacherPhone').value.trim();
+    
+    if (!fullName) {
+        alert('Пожалуйста, введите полное имя учителя');
+        return;
+    }
+
+    const telegram = document.getElementById('teacherTelegram').value.trim();
+    
+    fetch('/admin/teachers/create', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            full_name: fullName,
+            phone: phone || null,
+            telegram_id: telegram || null
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('createTeacherModal')).hide();
+            location.reload();
+        } else {
+            alert('Ошибка при создании учителя: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при создании учителя');
+    });
+});
+
+// Редактирование учителя
+document.querySelectorAll('.edit-teacher-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const teacherId = this.getAttribute('data-teacher-id');
+        const teacherName = this.getAttribute('data-teacher-name');
+        const teacherPhone = this.getAttribute('data-teacher-phone');
+        const teacherTelegram = this.getAttribute('data-teacher-telegram');
+        
+        document.getElementById('editTeacherId').value = teacherId;
+        document.getElementById('editTeacherFullName').value = teacherName;
+        document.getElementById('editTeacherPhone').value = teacherPhone;
+        document.getElementById('editTeacherTelegram').value = teacherTelegram;
+        
+        const modal = new bootstrap.Modal(document.getElementById('editTeacherModal'));
+        modal.show();
+    });
+});
+
+// Сохранение изменений учителя
+document.getElementById('editTeacherForm').addEventListener('submit', function(e) {
+    e.preventDefault();
+    
+    const teacherId = parseInt(document.getElementById('editTeacherId').value);
+    const fullName = document.getElementById('editTeacherFullName').value.trim();
+    const phone = document.getElementById('editTeacherPhone').value.trim();
+    const telegram = document.getElementById('editTeacherTelegram').value.trim();
+    
+    if (!fullName) {
+        alert('Пожалуйста, введите полное имя учителя');
+        return;
+    }
+
+    fetch(`/admin/teachers/update/${teacherId}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            full_name: fullName,
+            phone: phone || null,
+            telegram_id: telegram || null
+        })
+    })
+    .then(r => r.json())
+    .then(data => {
+        if (data.success) {
+            bootstrap.Modal.getInstance(document.getElementById('editTeacherModal')).hide();
+            location.reload();
+        } else {
+            alert('Ошибка при обновлении учителя: ' + (data.error || 'Неизвестная ошибка'));
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        alert('Ошибка при обновлении учителя');
+    });
+});
+
+// Удаление учителя
+document.querySelectorAll('.delete-teacher-btn').forEach(btn => {
+    btn.addEventListener('click', function() {
+        const teacherId = this.getAttribute('data-teacher-id');
+        const teacherName = this.getAttribute('data-teacher-name');
+        
+        if (!confirm(`Вы уверены, что хотите удалить учителя "${teacherName}"?\n\nВнимание: Это также удалит все назначения этого учителя!`)) {
+            return;
+        }
+
+        fetch(`/admin/teachers/delete/${teacherId}`, {
+            method: 'POST'
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                location.reload();
+            } else {
+                alert('Ошибка при удалении: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            alert('Ошибка при удалении учителя');
+        });
+    });
+});
+
+</script>
+{% endblock %}
+

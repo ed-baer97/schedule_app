@@ -1,0 +1,232 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2>
+        <i class="bi bi-mortarboard"></i> Классы
+    </h2>
+    <div>
+        <span class="text-muted me-3">Смена: <strong>{{ active_shift.name if active_shift else 'Не указана' }}</strong></span>
+    </div>
+</div>
+
+{% if classes_list %}
+<!-- Начальная школа (1-4 классы) -->
+{% if primary_classes %}
+<div class="mb-5">
+    <h3 class="mb-3">
+        <i class="bi bi-book"></i> Начальная школа (1-4 классы)
+    </h3>
+    <div class="row">
+        {% for class_data in primary_classes %}
+        <div class="col-12 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-success text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-mortarboard-fill"></i> {{ class_data.class_name }}
+                    </h4>
+                </div>
+            <div class="card-body">
+                {% if class_data.subjects %}
+                <div class="table-responsive">
+                    <table class="table table-hover table-bordered">
+                        <thead class="table-light">
+                            <tr>
+                                <th style="width: 25%;">Предмет</th>
+                                <th style="width: 10%;">Часов в неделю</th>
+                                <th style="width: 5%;">Подгруппы</th>
+                                <th style="width: 60%;">Учителя</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for subject_data in class_data.subjects %}
+                            <tr>
+                                <td>
+                                    <strong>{{ subject_data.subject_name }}</strong>
+                                </td>
+                                <td>
+                                    <span class="badge bg-info">{{ subject_data.total_hours_per_week }}</span>
+                                </td>
+                                <td class="text-center">
+                                    {% if subject_data.has_subgroups %}
+                                    <span class="badge bg-success" title="Есть подгруппы">
+                                        <i class="bi bi-check-circle"></i> Да
+                                    </span>
+                                    {% else %}
+                                    <span class="badge bg-secondary" title="Нет подгрупп">
+                                        <i class="bi bi-x-circle"></i> Нет
+                                    </span>
+                                    {% endif %}
+                                </td>
+                                <td>
+                                    {% if subject_data.teachers %}
+                                    <div class="d-flex flex-wrap gap-2">
+                                        {% for teacher in subject_data.teachers %}
+                                        <div class="badge bg-primary d-flex align-items-center gap-1">
+                                            <i class="bi bi-person-fill"></i>
+                                            <span>{{ teacher.teacher_name }}</span>
+                                            {% if teacher.hours_per_week %}
+                                            <span class="badge bg-light text-dark ms-1">
+                                                {{ teacher.hours_per_week }} ч/нед
+                                            </span>
+                                            {% endif %}
+                                            {% if teacher.default_cabinet %}
+                                            <span class="badge bg-secondary ms-1" title="Кабинет по умолчанию">
+                                                <i class="bi bi-door-open"></i> {{ teacher.default_cabinet }}
+                                            </span>
+                                            {% endif %}
+                                        </div>
+                                        {% endfor %}
+                                    </div>
+                                    {% else %}
+                                    <span class="text-muted">
+                                        <i class="bi bi-exclamation-triangle"></i> Учителя не назначены
+                                    </span>
+                                    {% endif %}
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                {% else %}
+                <div class="alert alert-info mb-0">
+                    <i class="bi bi-info-circle"></i> Для этого класса не назначены предметы
+                </div>
+                {% endif %}
+            </div>
+        </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+<!-- Старшая школа (5-11 классы) -->
+{% if secondary_classes %}
+<div class="mb-5">
+    <h3 class="mb-3">
+        <i class="bi bi-mortarboard"></i> Старшая школа (5-11 классы)
+    </h3>
+    <div class="row">
+        {% for class_data in secondary_classes %}
+        <div class="col-12 mb-4">
+            <div class="card shadow-sm">
+                <div class="card-header bg-primary text-white">
+                    <h4 class="mb-0">
+                        <i class="bi bi-mortarboard-fill"></i> {{ class_data.class_name }}
+                    </h4>
+                </div>
+                <div class="card-body">
+                    {% if class_data.subjects %}
+                    <div class="table-responsive">
+                        <table class="table table-hover table-bordered">
+                            <thead class="table-light">
+                                <tr>
+                                    <th style="width: 25%;">Предмет</th>
+                                    <th style="width: 10%;">Часов в неделю</th>
+                                    <th style="width: 5%;">Подгруппы</th>
+                                    <th style="width: 60%;">Учителя</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                {% for subject_data in class_data.subjects %}
+                                <tr>
+                                    <td>
+                                        <strong>{{ subject_data.subject_name }}</strong>
+                                    </td>
+                                    <td>
+                                        <span class="badge bg-info">{{ subject_data.total_hours_per_week }}</span>
+                                    </td>
+                                    <td class="text-center">
+                                        {% if subject_data.has_subgroups %}
+                                        <span class="badge bg-success" title="Есть подгруппы">
+                                            <i class="bi bi-check-circle"></i> Да
+                                        </span>
+                                        {% else %}
+                                        <span class="badge bg-secondary" title="Нет подгрупп">
+                                            <i class="bi bi-x-circle"></i> Нет
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                    <td>
+                                        {% if subject_data.teachers %}
+                                        <div class="d-flex flex-wrap gap-2">
+                                            {% for teacher in subject_data.teachers %}
+                                            <div class="badge bg-primary d-flex align-items-center gap-1">
+                                                <i class="bi bi-person-fill"></i>
+                                                <span>{{ teacher.teacher_name }}</span>
+                                                {% if teacher.hours_per_week %}
+                                                <span class="badge bg-light text-dark ms-1">
+                                                    {{ teacher.hours_per_week }} ч/нед
+                                                </span>
+                                                {% endif %}
+                                                {% if teacher.default_cabinet %}
+                                                <span class="badge bg-secondary ms-1" title="Кабинет по умолчанию">
+                                                    <i class="bi bi-door-open"></i> {{ teacher.default_cabinet }}
+                                                </span>
+                                                {% endif %}
+                                            </div>
+                                            {% endfor %}
+                                        </div>
+                                        {% else %}
+                                        <span class="text-muted">
+                                            <i class="bi bi-exclamation-triangle"></i> Учителя не назначены
+                                        </span>
+                                        {% endif %}
+                                    </td>
+                                </tr>
+                                {% endfor %}
+                            </tbody>
+                        </table>
+                    </div>
+                    {% else %}
+                    <div class="alert alert-info mb-0">
+                        <i class="bi bi-info-circle"></i> Для этого класса не назначены предметы
+                    </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+        {% endfor %}
+    </div>
+</div>
+{% endif %}
+
+{% if not primary_classes and not secondary_classes %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> 
+    <strong>Нет данных</strong><br>
+    Классы не найдены или для них не назначены предметы. 
+    Перейдите в раздел <a href="/admin/class-loads">Нагрузка классов</a> для настройки.
+</div>
+{% endif %}
+{% else %}
+<div class="alert alert-warning">
+    <i class="bi bi-exclamation-triangle"></i> 
+    <strong>Нет данных</strong><br>
+    Классы не найдены или для них не назначены предметы. 
+    Перейдите в раздел <a href="/admin/class-loads">Нагрузка классов</a> для настройки.
+</div>
+{% endif %}
+
+<style>
+    .card {
+        border: 1px solid #dee2e6;
+    }
+    .card-header {
+        border-bottom: 2px solid rgba(255, 255, 255, 0.2);
+    }
+    .table th {
+        font-weight: 600;
+        vertical-align: middle;
+    }
+    .table td {
+        vertical-align: middle;
+    }
+    .badge {
+        font-size: 0.875rem;
+        padding: 0.5em 0.75em;
+    }
+</style>
+{% endblock %}
+

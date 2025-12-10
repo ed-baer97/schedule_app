@@ -1,0 +1,104 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="container mt-4">
+    <h2>Проверка структуры Excel файлов</h2>
+    <p class="text-muted">Это временная страница для проверки структуры файлов</p>
+    
+    <div class="row mt-4">
+        <div class="col-md-12">
+            <div class="card mb-4">
+                <div class="card-header bg-primary text-white">
+                    <h4>Файл: Часы_Класс_Предмет.xlsx</h4>
+                </div>
+                <div class="card-body">
+                    {% if file1.success %}
+                        <p><strong>Размер:</strong> {{ file1.rows }} строк × {{ file1.cols }} столбцов</p>
+                        <p><strong>Колонки:</strong></p>
+                        <ul>
+                            {% for col in file1.columns %}
+                                <li><code>{{ col }}</code></li>
+                            {% endfor %}
+                        </ul>
+                        <p><strong>Первые строки:</strong></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm">
+                                <thead>
+                                    <tr>
+                                        {% for col in file1.columns %}
+                                            <th>{{ col }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in file1.first_rows[:10] %}
+                                        <tr>
+                                            {% for col in file1.columns %}
+                                                <td>{{ row[col] if row[col] is not none else '' }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                    {% else %}
+                        <div class="alert alert-danger">
+                            <strong>Ошибка:</strong> {{ file1.error }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+            
+            <div class="card mb-4">
+                <div class="card-header bg-success text-white">
+                    <h4>Файл: Учителя_Предмет.xlsx</h4>
+                </div>
+                <div class="card-body">
+                    {% if file2.success %}
+                        <p><strong>Размер:</strong> {{ file2.rows }} строк × {{ file2.cols }} столбцов</p>
+                        <p><strong>Колонки:</strong></p>
+                        <ul>
+                            {% for col in file2.columns %}
+                                <li><code>{{ col }}</code></li>
+                            {% endfor %}
+                        </ul>
+                        <p><strong>Первые строки:</strong></p>
+                        <div class="table-responsive">
+                            <table class="table table-bordered table-sm">
+                                <thead>
+                                    <tr>
+                                        {% for col in file2.columns %}
+                                            <th>{{ col }}</th>
+                                        {% endfor %}
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {% for row in file2.first_rows[:10] %}
+                                        <tr>
+                                            {% for col in file2.columns %}
+                                                <td>{{ row[col] if row[col] is not none else '' }}</td>
+                                            {% endfor %}
+                                        </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
+                        </div>
+                        {% if file2.sample_cells %}
+                            <p><strong>Примеры значений ячеек:</strong></p>
+                            <ul>
+                                {% for pos, val in file2.sample_cells.items() %}
+                                    <li><code>[{{ pos }}]</code>: {{ val }}</li>
+                                {% endfor %}
+                            </ul>
+                        {% endif %}
+                    {% else %}
+                        <div class="alert alert-danger">
+                            <strong>Ошибка:</strong> {{ file2.error }}
+                        </div>
+                    {% endif %}
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+

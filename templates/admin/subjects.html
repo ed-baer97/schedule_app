@@ -1,0 +1,1004 @@
+{% extends "admin/base.html" %}
+{% block content %}
+<div class="row mb-4">
+    <div class="col-12">
+        <h2 class="mb-3">
+            <i class="bi bi-book"></i> Предметы
+        </h2>
+        <p class="text-muted">Управление предметами и назначением учителей на предметы</p>
+    </div>
+</div>
+
+<div class="row">
+    <!-- Левая колонка: Список предметов по категориям -->
+    <div class="col-md-3">
+        <!-- Языки -->
+        {% if subjects_by_category.languages %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-header category-header-languages text-white">
+                <h5 class="mb-0"><i class="bi bi-translate"></i> Языки</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for s in subjects_by_category.languages %}
+                    <a href="/admin/subjects?subject={{ s.name }}"
+                        class="list-group-item list-group-item-action {% if request.args.get('subject') == s.name %}active{% endif %}"
+                        data-subject="{{ s.name }}" data-subject-id="{{ s.id }}" data-category="languages">
+                        <i class="bi bi-book-half"></i> {{ s.name }}
+                        <span class="badge category-badge-languages float-end">Язык</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Гуманитарные предметы -->
+        {% if subjects_by_category.humanities %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-header category-header-humanities text-white">
+                <h5 class="mb-0"><i class="bi bi-book"></i> Гуманитарные предметы</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for s in subjects_by_category.humanities %}
+                    <a href="/admin/subjects?subject={{ s.name }}"
+                        class="list-group-item list-group-item-action {% if request.args.get('subject') == s.name %}active{% endif %}"
+                        data-subject="{{ s.name }}" data-subject-id="{{ s.id }}" data-category="humanities">
+                        <i class="bi bi-book-half"></i> {{ s.name }}
+                        <span class="badge category-badge-humanities float-end">Гуманит.</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Естественно-математические предметы -->
+        {% if subjects_by_category.natural_math %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-header category-header-natural-math text-white">
+                <h5 class="mb-0"><i class="bi bi-calculator"></i> Естественно-математические</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for s in subjects_by_category.natural_math %}
+                    <a href="/admin/subjects?subject={{ s.name }}"
+                        class="list-group-item list-group-item-action {% if request.args.get('subject') == s.name %}active{% endif %}"
+                        data-subject="{{ s.name }}" data-subject-id="{{ s.id }}" data-category="natural_math">
+                        <i class="bi bi-book-half"></i> {{ s.name }}
+                        <span class="badge category-badge-natural-math float-end">Естеств.-мат.</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        <!-- Предметы без категории -->
+        {% if subjects_by_category.uncategorized %}
+        <div class="card shadow-sm mb-3">
+            <div class="card-header category-header-uncategorized text-dark">
+                <h5 class="mb-0"><i class="bi bi-question-circle"></i> Без категории</h5>
+            </div>
+            <div class="card-body p-0">
+                <div class="list-group list-group-flush">
+                    {% for s in subjects_by_category.uncategorized %}
+                    <a href="/admin/subjects?subject={{ s.name }}"
+                        class="list-group-item list-group-item-action {% if request.args.get('subject') == s.name %}active{% endif %}"
+                        data-subject="{{ s.name }}" data-subject-id="{{ s.id }}" data-category="">
+                        <i class="bi bi-book-half"></i> {{ s.name }}
+                        <span class="badge category-badge-uncategorized float-end">Нет кат.</span>
+                    </a>
+                    {% endfor %}
+                </div>
+            </div>
+        </div>
+        {% endif %}
+
+        {% if not subjects %}
+        <div class="card shadow-sm">
+            <div class="card-body">
+                <p class="text-muted mb-0">Нет предметов.<br>Загрузите Excel-файлы.</p>
+            </div>
+        </div>
+        <div class="mt-3">
+            <a href="/admin/upload" class="btn btn-success w-100">
+                <i class="bi bi-upload"></i> Загрузить Excel
+            </a>
+        </div>
+        {% endif %}
+    </div>
+
+    <!-- Правая колонка: Матрица предмета -->
+    <div class="col-md-9">
+        {% if selected_subject %}
+            <!-- Скрытый контейнер с данными предмета (всегда присутствует) -->
+            <div id="subjectDataContainer" 
+                 data-subject-id="{{ selected_subject.id }}" 
+                 data-subject-name="{{ selected_subject.name }}"
+                 data-shift-id="{% if active_shift and active_shift.id %}{{ active_shift.id }}{% elif shift_id %}{{ shift_id }}{% else %}0{% endif %}"
+                 style="display: none;"></div>
+            
+            {% if active_shift and active_shift.id %}
+            <div data-subject-id="{{ selected_subject.id }}" 
+                 data-subject-name="{{ selected_subject.name }}"
+                 data-shift-id="{{ active_shift.id }}">
+                <div class="d-flex justify-content-between align-items-start mb-4">
+                    <div class="flex-grow-1">
+                        <h2>{{ selected_subject.name }}</h2>
+
+                        <!-- Категория предмета -->
+                        <div class="mb-2">
+                            <label class="text-muted small me-2">Категория:</label>
+                            {% set current_category = selected_subject.category %}
+                            <select class="form-select form-select-sm d-inline-block w-auto" id="subjectCategorySelect"
+                                data-subject-id="{{ selected_subject.id }}">
+                                <option value="" {% if not current_category %}selected{% endif %}>Без категории</option>
+                                <option value="languages" {% if current_category=='languages' %}selected{% endif %}>🌍 Языки</option>
+                                <option value="humanities" {% if current_category=='humanities' %}selected{% endif %}>📚 Гуманитарные предметы</option>
+                                <option value="natural_math" {% if current_category=='natural_math' %}selected{% endif %}>🔬 Естественно-математические</option>
+                            </select>
+
+                            <span id="currentCategoryBadge" class="ms-2">
+                                {% if current_category == 'languages' %}
+                                <span class="badge category-badge-languages">Язык</span>
+                                {% elif current_category == 'humanities' %}
+                                <span class="badge category-badge-humanities">Гуманитарный</span>
+                                {% elif current_category == 'natural_math' %}
+                                <span class="badge category-badge-natural-math">Естественно-математический</span>
+                                {% else %}
+                                <span class="badge category-badge-uncategorized">Без категории</span>
+                                {% endif %}
+                            </span>
+                        </div>
+
+                        {% if subject_subgroups_info %}
+                        {% set has_any_subgroups = subject_subgroups_info.values() | select('equalto', True) | list | length > 0 %}
+                        {% if has_any_subgroups %}
+                        <span class="badge bg-warning text-dark mt-2">
+                            <i class="bi bi-people"></i> Есть подгруппы
+                        </span>
+                        {% endif %}
+                        {% endif %}
+                    </div>
+                    <div class="btn-group">
+                        <button class="btn btn-primary" data-bs-toggle="modal" data-bs-target="#addTeacherModal">
+                            + Добавить учителя
+                        </button>
+                        <button class="btn btn-success" data-bs-toggle="modal" data-bs-target="#createTeacherModal">
+                            + Создать нового учителя
+                        </button>
+                    </div>
+                </div>
+
+                {% if teachers %}
+                <div class="list-group">
+                    {% for item in teachers_with_classes %}
+                    {% set teacher = item.teacher %}
+                    {% set classes = item.classes %}
+                    {% set cabinets = item.cabinets %}
+                    <div class="list-group-item d-flex justify-content-between align-items-center">
+                        <div class="flex-grow-1">
+                            <h5 class="mb-1">{{ teacher.full_name }}</h5>
+                            <p class="mb-0 text-muted">
+                                <i class="bi bi-telephone"></i>
+                                <span id="phone-{{ teacher.id }}">{{ teacher.phone or 'Не указан' }}</span>
+                            </p>
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-mortarboard"></i> Классы:
+                                    {% if classes %}
+                                    {% for cls in classes %}
+                                    <span class="badge bg-info me-1">
+                                        {{ cls.name }}
+                                        {% if subject_subgroups_info and subject_subgroups_info.get((cls.id, selected_subject.id)) %}
+                                        <span class="badge bg-warning text-dark ms-1" title="Предмет с подгруппами в этом классе">
+                                            <i class="bi bi-people"></i>
+                                        </span>
+                                        {% endif %}
+                                    </span>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="text-warning"><i class="bi bi-exclamation-triangle"></i> Классы не назначены (назначьте вручную)</span>
+                                    {% endif %}
+                                </small>
+                            </div>
+                            <div class="mt-2">
+                                <small class="text-muted">
+                                    <i class="bi bi-door-open"></i> Кабинеты:
+                                    {% if cabinets %}
+                                    {% for cabinet_name in cabinets %}
+                                    <span class="badge bg-primary me-1">{{ cabinet_name }}</span>
+                                    {% endfor %}
+                                    {% else %}
+                                    <span class="text-muted">Не назначены</span>
+                                    {% endif %}
+                                </small>
+                            </div>
+                        </div>
+                        <div class="btn-group ms-3">
+                            <button type="button" class="btn btn-info btn-sm manage-classes-btn" 
+                                    data-teacher-id="{{ teacher.id }}"
+                                    data-teacher-name="{{ teacher.full_name }}">
+                                <i class="bi bi-mortarboard"></i> Классы
+                            </button>
+                            <button type="button" class="btn btn-danger btn-sm remove-teacher-btn" 
+                                    data-teacher-id="{{ teacher.id }}"
+                                    data-teacher-name="{{ teacher.full_name }}">
+                                <i class="bi bi-trash"></i> Удалить
+                            </button>
+                        </div>
+                    </div>
+                    {% endfor %}
+                </div>
+                {% else %}
+                <div class="alert alert-info">
+                    <p class="mb-0">Нет учителей, назначенных на этот предмет.</p>
+                    <p class="mb-0">Нажмите кнопку "Добавить учителя" чтобы начать.</p>
+                </div>
+                {% endif %}
+            </div>
+            {% else %}
+            <div class="alert alert-warning">
+                <h5>Активная смена не найдена</h5>
+                <p>Для работы с предметами необходимо выбрать активную смену. Пожалуйста, создайте смену в настройках.</p>
+            </div>
+            {% endif %}
+
+        <!-- Модальное окно: добавить учителя -->
+        <div class="modal fade" id="addTeacherModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Добавить учителя в предмет «{{ selected_subject.name }}»</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <select id="newTeacherSelect" class="form-select mb-3">
+                            <option value="">— Выберите учителя —</option>
+                            {% for t in all_teachers %}
+                            <option value="{{ t.id }}" data-phone="{{ t.phone or '' }}">{{ t.full_name }}</option>
+                            {% endfor %}
+                        </select>
+                        <div id="teacherPhoneInfo" class="text-muted mb-3" style="display: none;">
+                            <small>Телефон: <span id="selectedTeacherPhone"></span></small>
+                        </div>
+                        <button class="btn btn-success w-100" id="addTeacherBtn" disabled>Добавить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Модальное окно: создать нового учителя -->
+        <div class="modal fade" id="createTeacherModal" tabindex="-1">
+            <div class="modal-dialog">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Создать нового учителя</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <form id="createTeacherForm">
+                            <div class="mb-3">
+                                <label for="teacherFullName" class="form-label">Полное имя *</label>
+                                <input type="text" class="form-control" id="teacherFullName" required
+                                    placeholder="Иванов Иван Иванович">
+                            </div>
+                            <div class="mb-3">
+                                <label for="teacherPhone" class="form-label">Номер телефона</label>
+                                <input type="tel" class="form-control" id="teacherPhone"
+                                    placeholder="+7 (999) 123-45-67">
+                            </div>
+                            <div class="d-grid gap-2">
+                                <button type="submit" class="btn btn-success">Создать учителя</button>
+                                <button type="button" class="btn btn-outline-primary" id="createAndAddBtn" style="display: none;">
+                                    Создать и добавить к предмету
+                                </button>
+                            </div>
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        {% else %}
+        <div class="alert alert-info">
+            <p class="mb-0">Выберите предмет из списка слева, чтобы начать работу.</p>
+        </div>
+        {% endif %}
+
+        <!-- Модальное окно: управление классами учителя -->
+        <div class="modal fade" id="manageClassesModal" tabindex="-1">
+            <div class="modal-dialog modal-lg">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h5 class="modal-title">Управление классами учителя</h5>
+                        <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+                    </div>
+                    <div class="modal-body">
+                        <input type="hidden" id="manageClassesTeacherId">
+                        <input type="hidden" id="manageClassesTeacherName">
+                        <div class="mb-3">
+                            <label class="form-label">Учитель: <strong id="manageClassesTeacherNameDisplay"></strong></label>
+                        </div>
+                        <div class="mb-3">
+                            <label class="form-label">Привязанные классы:</label>
+                            <div id="teacherClassesList" class="p-2 border rounded">
+                                <p class="text-muted mb-0">Загрузка...</p>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between align-items-center mb-2">
+                                <label class="form-label mb-0">Выберите классы:</label>
+                                <button type="button" class="btn btn-sm btn-outline-secondary" onclick="clearAllClassCheckboxes()">
+                                    <i class="bi bi-x-circle"></i> Снять все галочки
+                                </button>
+                            </div>
+                            <div id="allClassesList" class="border rounded p-3" style="max-height: 300px; overflow-y: auto;">
+                                <p class="text-muted mb-0">Загрузка классов...</p>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="modal-footer">
+                        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Отмена</button>
+                        <button type="button" class="btn btn-primary" onclick="saveTeacherClasses()">Сохранить</button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+(function() {
+    'use strict';
+    
+    // Утилита для безопасного формирования URL
+    function buildSubjectUrl(subjectName) {
+        try {
+            const url = new URL(window.location);
+            url.searchParams.set('subject', subjectName);
+            return url.toString();
+        } catch (error) {
+            console.error('Ошибка при формировании URL:', error);
+            return `/admin/subjects?subject=${encodeURIComponent(subjectName)}`;
+        }
+    }
+    
+    // Получение данных о предмете из контейнера или активной ссылки
+    function getSubjectData() {
+        let id = null;
+        let name = null;
+        let shiftId = null;
+        let container = null;
+        
+        // 1. Сначала пытаемся получить из видимого контейнера (если есть активная смена)
+        container = document.querySelector('[data-subject-id]:not([id="subjectDataContainer"])');
+        if (container) {
+            id = container.getAttribute('data-subject-id');
+            name = container.getAttribute('data-subject-name');
+            shiftId = container.getAttribute('data-shift-id');
+            console.log('Данные из видимого контейнера:', {id, name, shiftId});
+        }
+        
+        // 2. Если shiftId не найден, используем скрытый контейнер
+        if (!shiftId || shiftId === '0' || shiftId === 'None' || shiftId === '') {
+            const hiddenContainer = document.getElementById('subjectDataContainer');
+            if (hiddenContainer) {
+                const hiddenId = hiddenContainer.getAttribute('data-subject-id');
+                const hiddenName = hiddenContainer.getAttribute('data-subject-name');
+                const hiddenShiftId = hiddenContainer.getAttribute('data-shift-id');
+                console.log('Данные из скрытого контейнера:', {id: hiddenId, name: hiddenName, shiftId: hiddenShiftId});
+                
+                // Используем данные из скрытого контейнера, если они валидны
+                if (hiddenId && hiddenShiftId && hiddenShiftId !== '0' && hiddenShiftId !== 'None' && hiddenShiftId !== '') {
+                    id = hiddenId;
+                    name = hiddenName;
+                    shiftId = hiddenShiftId;
+                    container = hiddenContainer;
+                } else if (hiddenId && !id) {
+                    // Если есть subjectId, но нет shiftId, используем subjectId и name
+                    id = hiddenId;
+                    name = hiddenName;
+                }
+            }
+        }
+        
+        // 3. Если subjectId не найден, пытаемся получить из активной ссылки в левой колонке
+        if (!id) {
+            const activeLink = document.querySelector('.list-group-item.active[data-subject-id]');
+            if (activeLink) {
+                id = activeLink.getAttribute('data-subject-id');
+                name = activeLink.getAttribute('data-subject');
+                console.log('Данные из активной ссылки:', {id, name});
+            }
+        }
+        
+        // 4. Если name не найден, пытаемся получить из URL
+        if (!name) {
+            try {
+                const urlParams = new URLSearchParams(window.location.search);
+                name = urlParams.get('subject');
+                console.log('Данные из URL:', {name});
+            } catch (error) {
+                console.error('Ошибка при получении данных из URL:', error);
+            }
+        }
+        
+        // 5. Если shiftId все еще не найден, пытаемся получить из любого контейнера с data-shift-id
+        if (!shiftId || shiftId === '0' || shiftId === 'None' || shiftId === '') {
+            const containerWithShift = document.querySelector('[data-shift-id]:not([data-shift-id="0"]):not([data-shift-id="None"]):not([data-shift-id=""])');
+            if (containerWithShift) {
+                const foundShiftId = containerWithShift.getAttribute('data-shift-id');
+                if (foundShiftId && foundShiftId !== '0' && foundShiftId !== 'None' && foundShiftId !== '') {
+                    shiftId = foundShiftId;
+                    console.log('shiftId найден в другом контейнере:', shiftId);
+                }
+            }
+        }
+        
+        // Проверяем, что id валиден
+        if (!id || id === 'None' || id === '') {
+            console.error('subjectId невалиден после всех попыток:', id);
+            return null;
+        }
+        
+        // Если shiftId все еще не найден, возвращаем null (показываем ошибку)
+        if (!shiftId || shiftId === '0' || shiftId === 'None' || shiftId === '') {
+            console.error('shiftId невалиден после всех попыток:', shiftId);
+            return null;
+        }
+        
+        return {
+            id: id,
+            name: name || '',
+            shiftId: shiftId,
+            container: container
+        };
+    }
+    
+    // Асинхронная версия getSubjectData, которая запрашивает активную смену с сервера, если она не найдена
+    async function getSubjectDataAsync() {
+        let data = getSubjectData();
+        
+        // Если данные найдены и валидны, возвращаем их
+        if (data && validateSubjectData(data)) {
+            return data;
+        }
+        
+        // Если subjectId найден, но shiftId не найден, запрашиваем активную смену с сервера
+        if (data && data.id && (!data.shiftId || data.shiftId === '0' || data.shiftId === 'None' || data.shiftId === '')) {
+            console.log('Запрос активной смены с сервера...');
+            try {
+                const response = await fetch('/admin/api/active_shift');
+                const result = await response.json();
+                if (result.success && result.shift_id) {
+                    console.log('Активная смена получена с сервера:', result.shift_id);
+                    return {
+                        id: data.id,
+                        name: data.name || '',
+                        shiftId: result.shift_id.toString(),
+                        container: data.container
+                    };
+                }
+            } catch (error) {
+                console.error('Ошибка при запросе активной смены:', error);
+            }
+        }
+        
+        // Если subjectId не найден, пытаемся получить из активной ссылки
+        if (!data || !data.id) {
+            const activeLink = document.querySelector('.list-group-item.active[data-subject-id]');
+            if (activeLink) {
+                const subjectId = activeLink.getAttribute('data-subject-id');
+                const subjectName = activeLink.getAttribute('data-subject');
+                
+                // Запрашиваем активную смену
+                try {
+                    const response = await fetch('/admin/api/active_shift');
+                    const result = await response.json();
+                    if (result.success && result.shift_id && subjectId) {
+                        console.log('Данные получены из активной ссылки и API:', {subjectId, shiftId: result.shift_id});
+                        return {
+                            id: subjectId,
+                            name: subjectName || '',
+                            shiftId: result.shift_id.toString(),
+                            container: activeLink
+                        };
+                    }
+                } catch (error) {
+                    console.error('Ошибка при запросе активной смены:', error);
+                }
+            }
+        }
+        
+        return null;
+    }
+    
+    // Проверка данных предмета
+    function validateSubjectData(data) {
+        if (!data) {
+            console.error('validateSubjectData: data is null or undefined');
+            return false;
+        }
+        if (!data.id || !data.shiftId) {
+            console.error('validateSubjectData: missing id or shiftId', data);
+            return false;
+        }
+        if (data.id === '' || data.shiftId === '' || data.id === 'None' || data.shiftId === 'None') {
+            console.error('validateSubjectData: empty or None values', data);
+            return false;
+        }
+        const idNum = parseInt(data.id);
+        const shiftIdNum = parseInt(data.shiftId);
+        if (isNaN(idNum) || isNaN(shiftIdNum)) {
+            console.error('validateSubjectData: NaN values', {id: data.id, shiftId: data.shiftId, idNum, shiftIdNum});
+            return false;
+        }
+        if (idNum <= 0 || shiftIdNum <= 0) {
+            console.error('validateSubjectData: non-positive values', {idNum, shiftIdNum});
+            return false;
+        }
+        return true;
+    }
+    
+    // Инициализация при загрузке DOM
+    document.addEventListener('DOMContentLoaded', function() {
+        console.log('=== Инициализация страницы предметов ===');
+        const subjectData = getSubjectData();
+        console.log('Данные предмета получены:', subjectData);
+        
+        // Проверяем все возможные контейнеры для отладки
+        const allContainers = document.querySelectorAll('[data-subject-id]');
+        console.log('Найдено контейнеров с data-subject-id:', allContainers.length);
+        allContainers.forEach((container, index) => {
+            console.log(`Контейнер ${index + 1}:`, {
+                id: container.id,
+                subjectId: container.getAttribute('data-subject-id'),
+                subjectName: container.getAttribute('data-subject-name'),
+                shiftId: container.getAttribute('data-shift-id'),
+                isHidden: container.style.display === 'none' || container.id === 'subjectDataContainer'
+            });
+        });
+        
+        // Если данные не найдены, не блокируем работу, но логируем предупреждение
+        if (!subjectData) {
+            console.warn('Контейнер с data-subject-id не найден или данные невалидны. Некоторые функции могут быть недоступны.');
+            // Не возвращаемся, чтобы обработчики кнопок могли работать
+        } else if (!validateSubjectData(subjectData)) {
+            console.warn('Данные предмета невалидны:', subjectData);
+            // Не возвращаемся, чтобы обработчики кнопок могли работать
+        } else {
+            console.log('Данные предмета валидны:', subjectData);
+        }
+        
+        // Показ телефона выбранного учителя
+        const newTeacherSelect = document.getElementById('newTeacherSelect');
+        if (newTeacherSelect) {
+            newTeacherSelect.addEventListener('change', function() {
+                const selectedOption = this.options[this.selectedIndex];
+                const phoneInfo = document.getElementById('teacherPhoneInfo');
+                const phoneSpan = document.getElementById('selectedTeacherPhone');
+                const addBtn = document.getElementById('addTeacherBtn');
+                
+                if (this.value) {
+                    const phone = selectedOption.getAttribute('data-phone');
+                    phoneSpan.textContent = phone || 'Не указан';
+                    phoneInfo.style.display = 'block';
+                    addBtn.disabled = false;
+                } else {
+                    phoneInfo.style.display = 'none';
+                    addBtn.disabled = true;
+                }
+            });
+        }
+        
+        // Добавление учителя в предмет
+        const addTeacherBtn = document.getElementById('addTeacherBtn');
+        if (addTeacherBtn) {
+            addTeacherBtn.addEventListener('click', function() {
+                const teacherId = document.getElementById('newTeacherSelect').value;
+                if (!teacherId) return;
+                
+                const data = getSubjectData();
+                if (!data || !validateSubjectData(data)) {
+                    alert('Ошибка: не удалось определить предмет или смену. Убедитесь, что выбрана активная смена.');
+                    return;
+                }
+                
+                fetch('/admin/add_teacher_to_subject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        teacher_id: teacherId,
+                        subject_id: data.id,
+                        shift_id: parseInt(data.shiftId)
+                    })
+                }).then(() => {
+                    window.location.href = buildSubjectUrl(data.name);
+                }).catch(error => {
+                    console.error('Ошибка при добавлении учителя:', error);
+                    alert('Ошибка при добавлении учителя');
+                });
+            });
+        }
+        
+        // Создание нового учителя
+        let shouldAddToSubject = false;
+        const createAndAddBtn = document.getElementById('createAndAddBtn');
+        const createTeacherForm = document.getElementById('createTeacherForm');
+        
+        if (createTeacherForm) {
+            const createTeacherModal = document.getElementById('createTeacherModal');
+            if (createTeacherModal) {
+                createTeacherModal.addEventListener('show.bs.modal', function() {
+                    shouldAddToSubject = false;
+                    if (createAndAddBtn) {
+                        createAndAddBtn.style.display = 'block';
+                    }
+                });
+            }
+            
+            if (createAndAddBtn) {
+                createAndAddBtn.addEventListener('click', function() {
+                    shouldAddToSubject = true;
+                    createTeacherForm.dispatchEvent(new Event('submit'));
+                });
+            }
+            
+            createTeacherForm.addEventListener('submit', function(e) {
+                e.preventDefault();
+                
+                const fullName = document.getElementById('teacherFullName').value.trim();
+                const phone = document.getElementById('teacherPhone').value.trim();
+                
+                if (!fullName) {
+                    alert('Пожалуйста, введите полное имя учителя');
+                    return;
+                }
+                
+                const data = getSubjectData();
+                if (!data || !validateSubjectData(data)) {
+                    alert('Ошибка: не удалось определить предмет или смену. Убедитесь, что выбрана активная смена.');
+                    return;
+                }
+                
+                fetch('/admin/teachers/create', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        full_name: fullName,
+                        phone: phone || null
+                    })
+                })
+                .then(r => r.json())
+                .then(result => {
+                    if (result.success) {
+                        if (shouldAddToSubject && result.teacher_id) {
+                            return fetch('/admin/add_teacher_to_subject', {
+                                method: 'POST',
+                                headers: { 'Content-Type': 'application/json' },
+                                body: JSON.stringify({
+                                    teacher_id: result.teacher_id,
+                                    subject_id: data.id,
+                                    shift_id: parseInt(data.shiftId)
+                                })
+                            }).then(() => {
+                                window.location.href = buildSubjectUrl(data.name);
+                            });
+                        } else {
+                            window.location.href = buildSubjectUrl(data.name);
+                        }
+                    } else {
+                        alert('Ошибка при создании учителя: ' + (result.error || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при создании учителя:', error);
+                    alert('Ошибка при создании учителя');
+                });
+            });
+        }
+    });
+    
+    // Обработчик кнопки "Классы" - делегирование событий
+    document.addEventListener('click', async function(event) {
+        const clickedBtn = event.target.closest('.manage-classes-btn');
+        if (!clickedBtn) return;
+        
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const teacherId = parseInt(clickedBtn.getAttribute('data-teacher-id'));
+        const teacherName = clickedBtn.getAttribute('data-teacher-name');
+        
+        if (!teacherId || !teacherName) {
+            console.error('Ошибка: не удалось получить данные учителя');
+            return;
+        }
+        
+        // Используем асинхронную версию для получения данных
+        const subjectData = await getSubjectDataAsync();
+        if (!subjectData || !validateSubjectData(subjectData)) {
+            alert('Ошибка: не удалось определить предмет или смену. Убедитесь, что выбрана активная смена и предмет выбран.');
+            return;
+        }
+        
+        const subjectIdNum = parseInt(subjectData.id);
+        const shiftIdNum = parseInt(subjectData.shiftId);
+        
+        // Заполняем данные в модальном окне
+        document.getElementById('manageClassesTeacherId').value = teacherId;
+        document.getElementById('manageClassesTeacherName').value = teacherName;
+        document.getElementById('manageClassesTeacherNameDisplay').textContent = teacherName;
+        
+        // Загружаем классы учителя
+        fetch(`/admin/teachers/${teacherId}/classes?subject_id=${subjectIdNum}&shift_id=${shiftIdNum}`)
+            .then(r => {
+                if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+                return r.json();
+            })
+            .then(data => {
+                if (data.success) {
+                    // Обновляем список привязанных классов
+                    const teacherClassesList = document.getElementById('teacherClassesList');
+                    if (data.teacher_classes.length > 0) {
+                        teacherClassesList.innerHTML = data.teacher_classes.map(c =>
+                            `<span class="badge bg-primary me-2 mb-2">${c.name}</span>`
+                        ).join('');
+                    } else {
+                        teacherClassesList.innerHTML = '<p class="text-muted mb-0">Нет привязанных классов</p>';
+                    }
+                    
+                    // Заполняем список всех классов
+                    const allClassesList = document.getElementById('allClassesList');
+                    if (data.all_classes && data.all_classes.length > 0) {
+                        allClassesList.innerHTML = data.all_classes.map(c => {
+                            const isChecked = data.teacher_classes.some(tc => tc.id === c.id);
+                            return `
+                                <div class="form-check">
+                                    <input class="form-check-input class-checkbox" type="checkbox" 
+                                           value="${c.id}" id="class-${c.id}" ${isChecked ? 'checked' : ''}>
+                                    <label class="form-check-label" for="class-${c.id}">${c.name}</label>
+                                </div>
+                            `;
+                        }).join('');
+                    } else {
+                        allClassesList.innerHTML = '<p class="text-muted mb-0">Нет классов в базе данных</p>';
+                    }
+                    
+                    // Открываем модальное окно
+                    const modalEl = document.getElementById('manageClassesModal');
+                    if (modalEl && typeof bootstrap !== 'undefined') {
+                        let modal = bootstrap.Modal.getInstance(modalEl);
+                        if (!modal) {
+                            modal = new bootstrap.Modal(modalEl);
+                        }
+                        modal.show();
+                    }
+                } else {
+                    alert('Ошибка при загрузке классов: ' + (data.error || 'Неизвестная ошибка'));
+                }
+            })
+            .catch(error => {
+                console.error('Ошибка при загрузке классов:', error);
+                alert('Ошибка при загрузке классов учителя: ' + (error.message || 'Неизвестная ошибка'));
+            });
+    });
+    
+    // Обработчик кнопки "Удалить" - делегирование событий
+    document.addEventListener('click', async function(event) {
+        const clickedBtn = event.target.closest('.remove-teacher-btn');
+        if (!clickedBtn) return;
+        
+        event.preventDefault();
+        event.stopPropagation();
+        
+        const teacherId = clickedBtn.getAttribute('data-teacher-id');
+        const teacherName = clickedBtn.getAttribute('data-teacher-name');
+        
+        if (!teacherId || !teacherName) {
+            console.error('Ошибка: не удалось получить данные учителя');
+            return;
+        }
+        
+        // Используем асинхронную версию для получения данных
+        const subjectData = await getSubjectDataAsync();
+        if (!subjectData || !validateSubjectData(subjectData)) {
+            alert('Ошибка: не удалось определить предмет или смену. Убедитесь, что выбрана активная смена и предмет выбран.');
+            return;
+        }
+        
+        const subjectName = subjectData.name;
+        if (!confirm(`Вы уверены, что хотите удалить учителя "${teacherName}" из предмета "${subjectName}"?`)) {
+            return;
+        }
+        
+        fetch('/admin/remove_teacher_from_subject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                teacher_id: parseInt(teacherId),
+                subject_id: parseInt(subjectData.id),
+                shift_id: parseInt(subjectData.shiftId)
+            })
+        })
+        .then(r => {
+            if (!r.ok) throw new Error(`HTTP error! status: ${r.status}`);
+            return r.json();
+        })
+        .then(data => {
+            if (data.success) {
+                window.location.href = buildSubjectUrl(subjectData.name);
+            } else {
+                alert('Ошибка при удалении: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при удалении учителя:', error);
+            alert('Ошибка при удалении учителя: ' + (error.message || 'Неизвестная ошибка'));
+        });
+    });
+    
+    // Глобальные функции для модального окна
+    window.clearAllClassCheckboxes = function() {
+        document.querySelectorAll('.class-checkbox').forEach(cb => {
+            cb.checked = false;
+        });
+    };
+    
+    window.saveTeacherClasses = function() {
+        const subjectData = getSubjectData();
+        if (!subjectData || !validateSubjectData(subjectData)) {
+            alert('Ошибка: не удалось определить предмет или смену. Убедитесь, что выбрана активная смена и предмет выбран.');
+            return;
+        }
+        
+        const teacherIdEl = document.getElementById('manageClassesTeacherId');
+        if (!teacherIdEl) {
+            alert('Ошибка: не удалось найти элемент manageClassesTeacherId');
+            return;
+        }
+        
+        const teacherId = parseInt(teacherIdEl.value);
+        const selectedClasses = Array.from(document.querySelectorAll('.class-checkbox:checked'))
+            .map(cb => parseInt(cb.value));
+        
+        if (selectedClasses.length === 0) {
+            if (!confirm('Вы убрали все классы. Учитель будет удален из этого предмета. Продолжить?')) {
+                return;
+            }
+        }
+        
+        fetch(`/admin/teachers/${teacherId}/classes`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                class_ids: selectedClasses,
+                subject_id: parseInt(subjectData.id),
+                shift_id: parseInt(subjectData.shiftId)
+            })
+        })
+        .then(r => r.json())
+        .then(data => {
+            if (data.success) {
+                const modalEl = document.getElementById('manageClassesModal');
+                if (modalEl && typeof bootstrap !== 'undefined') {
+                    const modalInstance = bootstrap.Modal.getInstance(modalEl);
+                    if (modalInstance) {
+                        modalInstance.hide();
+                    }
+                }
+                if (selectedClasses.length === 0) {
+                    alert('Учитель удален из предмета');
+                } else {
+                    alert('Классы учителя успешно обновлены');
+                }
+                window.location.href = buildSubjectUrl(subjectData.name);
+            } else {
+                alert('Ошибка при сохранении: ' + (data.error || 'Неизвестная ошибка'));
+            }
+        })
+        .catch(error => {
+            console.error('Ошибка при сохранении:', error);
+            alert('Ошибка при сохранении классов учителя');
+        });
+    };
+})();
+</script>
+
+<script>
+// Обработка изменения категории предмета
+(function() {
+    'use strict';
+    const categorySelect = document.getElementById('subjectCategorySelect');
+    if (categorySelect) {
+        categorySelect.addEventListener('change', function() {
+            const subjectId = this.getAttribute('data-subject-id');
+            const category = this.value;
+            
+            if (confirm('Изменить категорию предмета?')) {
+                fetch(`/admin/subjects/${subjectId}/update_category`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ category: category })
+                })
+                .then(r => r.json())
+                .then(data => {
+                    if (data.success) {
+                        alert(data.message);
+                        window.location.reload();
+                    } else {
+                        alert('Ошибка: ' + (data.error || 'Неизвестная ошибка'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Ошибка при обновлении категории:', error);
+                    alert('Ошибка при обновлении категории');
+                });
+            } else {
+                // Возвращаем предыдущее значение
+                window.location.reload();
+            }
+        });
+    }
+})();
+</script>
+
+<style>
+.list-group-item.active {
+    background-color: #0d6efd;
+    border-color: #0d6efd;
+    color: white;
+}
+
+.list-group-item.active i {
+    color: white;
+}
+
+#subjectMatrixContainer {
+    min-height: 400px;
+}
+
+.category-header-languages {
+    background-color: #0d6efd !important;
+}
+
+.category-header-humanities {
+    background-color: #fd7e14 !important;
+}
+
+.category-header-natural-math {
+    background-color: #198754 !important;
+}
+
+.category-header-uncategorized {
+    background-color: #6c757d !important;
+    color: white !important;
+}
+
+.category-badge-languages {
+    background-color: #0d6efd;
+    color: white;
+    font-size: 0.7rem;
+}
+
+.category-badge-humanities {
+    background-color: #fd7e14;
+    color: white;
+    font-size: 0.7rem;
+}
+
+.category-badge-natural-math {
+    background-color: #198754;
+    color: white;
+    font-size: 0.7rem;
+}
+
+.category-badge-uncategorized {
+    background-color: #6c757d;
+    color: white;
+    font-size: 0.7rem;
+}
+</style>
+{% endblock %}
