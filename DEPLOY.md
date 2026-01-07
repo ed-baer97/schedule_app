@@ -18,7 +18,7 @@
    - **Name**: `schedule-app` (или любое другое имя)
    - **Environment**: `Python 3`
    - **Python Version**: `3.11.0` (⚠️ ВАЖНО: укажите вручную в настройках!)
-   - **Build Command**: `pip install --upgrade pip setuptools wheel && pip install -r requirements.txt`
+   - **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt`
    - **Start Command**: `gunicorn app:app`
    - **Plan**: `Free` (для начала)
    

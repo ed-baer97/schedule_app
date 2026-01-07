@@ -28,12 +28,24 @@ Render может автоматически выбрать Python 3.13+, что
 После перезапуска деплоя в логах должно быть:
 ```
 ==> Installing Python version 3.11.0...
-==> Using Python version 3.11.0 (default)
+==> Using Python version 3.11.0 via environment variable PYTHON_VERSION
 ```
 
 Вместо:
 ```
 ==> Installing Python version 3.13.4...
+==> Using Python version 3.13.4 (default)
+```
+
+## Правильный формат деплоя
+
+Деплой должен выглядеть так:
+```
+==> Downloading cache...
+==> Cloning from https://github.com/...
+==> Installing Python version 3.11.0...
+==> Using Python version 3.11.0 via environment variable PYTHON_VERSION
+==> Running build command 'pip install --upgrade pip && pip install -r requirements.txt'...
 ```
 
 ## Почему Python 3.11?
