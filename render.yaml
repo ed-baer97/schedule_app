@@ -3,6 +3,8 @@ services:
     name: schedule-app
     env: python
     plan: free
+    # ⚠️ ВАЖНО: Установите Python 3.11.0 вручную в настройках сервиса (Settings → Environment → Python Version)
+    # Переменная PYTHON_VERSION здесь может не работать - Render все равно может использовать Python 3.13
     buildCommand: pip install --upgrade pip setuptools wheel && pip install --prefer-binary -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
