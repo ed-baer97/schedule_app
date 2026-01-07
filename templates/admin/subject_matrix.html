@@ -297,12 +297,18 @@ document.querySelectorAll('.manage-classes-btn').forEach(btn => {
         const teacherId = parseInt(this.getAttribute('data-teacher-id'));
         const teacherName = this.getAttribute('data-teacher-name');
         
+        // Получаем subject_id и shift_id из data-атрибутов контейнера
+        const subjectContainer = document.querySelector('[data-subject-id]');
+        const subjectId = subjectContainer ? parseInt(subjectContainer.getAttribute('data-subject-id')) : null;
+        const shiftId = subjectContainer ? parseInt(subjectContainer.getAttribute('data-shift-id')) : null;
+        
         document.getElementById('manageClassesTeacherId').value = teacherId;
         document.getElementById('manageClassesTeacherName').value = teacherName;
         document.getElementById('manageClassesTeacherNameDisplay').textContent = teacherName;
         
-        // Загружаем текущие классы учителя
-        fetch(`/admin/teachers/${teacherId}/classes`)
+        // Загружаем текущие классы учителя с указанием subject_id и shift_id
+        const url = `/admin/teachers/${teacherId}/classes${subjectId && shiftId ? `?subject_id=${subjectId}&shift_id=${shiftId}` : ''}`;
+        fetch(url)
             .then(r => r.json())
             .then(data => {
                 if (data.success) {
@@ -319,8 +325,11 @@ document.querySelectorAll('.manage-classes-btn').forEach(btn => {
                     // Заполняем список всех классов с чекбоксами
                     const allClassesList = document.getElementById('allClassesList');
                     if (data.all_classes && data.all_classes.length > 0) {
+                        // Убеждаемся, что teacher_classes существует и является массивом
+                        const teacherClasses = Array.isArray(data.teacher_classes) ? data.teacher_classes : [];
                         allClassesList.innerHTML = data.all_classes.map(c => {
-                            const isChecked = data.teacher_classes.some(tc => tc.id === c.id);
+                            // Если teacher_classes пустой, галочки не ставятся
+                            const isChecked = teacherClasses.length > 0 && teacherClasses.some(tc => tc.id === c.id);
                             return `
                                 <div class="form-check">
                                     <input class="form-check-input class-checkbox" type="checkbox" 
@@ -353,11 +362,18 @@ function saveTeacherClasses() {
     const selectedClasses = Array.from(document.querySelectorAll('.class-checkbox:checked'))
         .map(cb => parseInt(cb.value));
     
+    // Получаем subject_id и shift_id из data-атрибутов контейнера
+    const subjectContainer = document.querySelector('[data-subject-id]');
+    const subjectId = subjectContainer ? parseInt(subjectContainer.getAttribute('data-subject-id')) : null;
+    const shiftId = subjectContainer ? parseInt(subjectContainer.getAttribute('data-shift-id')) : null;
+    
     fetch(`/admin/teachers/${teacherId}/classes`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-            class_ids: selectedClasses
+            class_ids: selectedClasses,
+            subject_id: subjectId,
+            shift_id: shiftId
         })
     })
     .then(r => r.json())

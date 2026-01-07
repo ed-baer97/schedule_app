@@ -129,12 +129,66 @@
         padding: 6px 12px;
     }
     
+    /* Контейнеры таблиц для правильной прокрутки */
+    .table-responsive {
+        position: relative;
+    }
+    
+    /* Контейнер для таблицы с прокруткой, но скрытой полосой прокрутки */
+    .table-wrapper {
+        overflow-x: auto;
+        overflow-y: auto;
+        min-height: 0;
+        flex-grow: 1;
+        position: relative;
+        /* Скрываем горизонтальную полосу прокрутки */
+        scrollbar-width: none; /* Firefox */
+        -ms-overflow-style: none; /* IE and Edge */
+    }
+    
+    /* Скрываем горизонтальную полосу прокрутки в контейнере таблицы */
+    .table-wrapper::-webkit-scrollbar:horizontal {
+        height: 0;
+        display: none;
+    }
+    
+    .table-wrapper::-webkit-scrollbar {
+        width: 0;
+        height: 0;
+    }
+    
+    /* Контейнер для горизонтальной прокрутки ниже таблицы */
+    .table-scrollbar-container {
+        overflow-x: auto;
+        overflow-y: hidden;
+        height: 20px;
+        margin-top: 0;
+        background-color: #f8f9fa;
+        border-top: 1px solid #dee2e6;
+        flex-shrink: 0;
+    }
+    
+    /* Убеждаемся, что таблица может быть шире контейнера */
+    .table-wrapper table {
+        min-width: 100%;
+        width: max-content;
+    }
+    
     /* Выравнивание содержимого ячеек расписания */
     #scheduleTable td,
     #temporaryScheduleTable td {
         vertical-align: top;
         text-align: left;
         padding: 8px;
+    }
+    
+    /* Фиксируем заголовок таблицы при прокрутке */
+    #scheduleTable thead,
+    #temporaryScheduleTable thead {
+        position: sticky;
+        top: 0;
+        z-index: 10;
+        background-color: #f8f9fa;
     }
     
     #scheduleTable td .small,
@@ -237,13 +291,16 @@
         <button class="btn btn-danger" data-bs-toggle="modal" data-bs-target="#clearScheduleModal" title="Очистить все постоянное расписание">
             <i class="bi bi-trash"></i> Очистить расписание
         </button>
+        <button class="btn btn-warning" id="showGenerationModalBtn" title="Открыть окно генерации расписания">
+            <i class="bi bi-magic"></i> Генерация расписания
+        </button>
     </div>
 </div>
 
-<!-- Два окна: слева расписание, справа бот -->
+<!-- Одно окно: Расписание (окно генерации теперь модальное) -->
 <div class="resizable-container" style="height: calc(100vh - 200px); display: flex; gap: 0;">
-    <!-- Левое окно: Расписание -->
-    <div class="resizable-panel" id="schedulePanel" style="flex: 0 0 66.666%; height: 100%; display: flex; flex-direction: column; min-width: 300px; max-width: 90%;">
+    <!-- Окно: Расписание -->
+    <div class="resizable-panel" id="schedulePanel" style="flex: 1 1 100%; height: 100%; display: flex; flex-direction: column; min-width: 300px;">
         <div class="card h-100 d-flex flex-column">
             <div class="card-header flex-shrink-0">
                 <!-- Вкладки для постоянного и временного расписания -->
@@ -260,11 +317,11 @@
                     </li>
                 </ul>
             </div>
-            <div class="card-body overflow-auto flex-grow-1" style="max-height: 100%;">
-                <div class="tab-content" id="scheduleTabContent">
+            <div class="card-body d-flex flex-column flex-grow-1" style="max-height: 100%; padding: 0;">
+                <div class="tab-content flex-grow-1 d-flex flex-column" id="scheduleTabContent" style="min-height: 0;">
                     <!-- Вкладка постоянного расписания -->
-                    <div class="tab-pane fade show active" id="permanent-schedule" role="tabpanel">
-                        <div class="mb-3 d-flex justify-content-between align-items-center">
+                    <div class="tab-pane fade show active d-flex flex-column" id="permanent-schedule" role="tabpanel" style="min-height: 0;">
+                        <div class="mb-3 d-flex justify-content-between align-items-center p-3" style="flex-shrink: 0;">
                             <h6 class="mb-0">Постоянное расписание</h6>
                             <select id="shiftSelect" class="form-select form-select-sm" style="width: auto;">
                                 {% for shift in shifts %}
@@ -272,7 +329,7 @@
                                 {% endfor %}
                             </select>
                         </div>
-                        <div class="table-responsive">
+                        <div class="table-wrapper">
                             <table class="table table-bordered table-sm" id="scheduleTable">
                                 <thead class="table-light sticky-top">
                                     <tr>
@@ -298,11 +355,14 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div class="table-scrollbar-container" id="scheduleTableScrollbar">
+                            <div style="width: 1px; height: 1px;"></div>
+                        </div>
                     </div>
                     
                     <!-- Вкладка временного расписания -->
-                    <div class="tab-pane fade" id="temporary-schedule" role="tabpanel">
-                        <div class="mb-3">
+                    <div class="tab-pane fade d-flex flex-column" id="temporary-schedule" role="tabpanel" style="min-height: 0;">
+                        <div class="mb-3 p-3" style="flex-shrink: 0;">
                             <div class="row g-2 align-items-end">
                                 <div class="col-md-4">
                                     <label for="temporaryDate" class="form-label">Выберите дату *</label>
@@ -331,7 +391,7 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="table-responsive">
+                        <div class="table-wrapper">
                             <table class="table table-bordered table-sm" id="temporaryScheduleTable">
                                 <thead class="table-light sticky-top">
                                     <tr>
@@ -362,38 +422,10 @@
                                 </tbody>
                             </table>
                         </div>
+                        <div class="table-scrollbar-container" id="temporaryScheduleTableScrollbar">
+                            <div style="width: 1px; height: 1px;"></div>
+                        </div>
                     </div>
-                </div>
-            </div>
-        </div>
-    </div>
-    
-    <!-- Разделитель для изменения размера -->
-    <div class="resizer" id="resizer" style="width: 4px; background-color: #dee2e6; cursor: col-resize; flex-shrink: 0; position: relative;">
-        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 2px; height: 40px; background-color: #adb5bd; border-radius: 2px;"></div>
-    </div>
-
-    <!-- Правое окно: Кнопка генерации расписания -->
-    <div class="resizable-panel" id="botPanel" style="flex: 0 0 33.334%; height: 100%; display: flex; flex-direction: column; min-width: 300px; max-width: 90%;">
-        <div class="card h-100 d-flex flex-column">
-            <div class="card-header flex-shrink-0">
-                <div class="d-flex justify-content-between align-items-center">
-                    <h5 class="mb-0"><i class="bi bi-magic"></i> Генерация расписания</h5>
-                </div>
-            </div>
-            <div class="card-body overflow-auto flex-grow-1 d-flex flex-column" style="padding: 20px;">
-                <div class="text-center w-100 mb-3">
-                    <button class="btn btn-secondary btn-sm w-100 mb-3" data-bs-toggle="modal" data-bs-target="#filterSettingsModal">
-                        <i class="bi bi-funnel"></i> Фильтр
-                    </button>
-                </div>
-                <div class="text-center w-100 mt-auto">
-                    <button class="btn btn-warning btn-lg w-100 mb-3" id="generateScheduleBtnDirect" style="min-height: 60px;">
-                        <i class="bi bi-magic"></i> Сгенерировать расписание
-                    </button>
-                    <p class="text-muted small">
-                        Нажмите кнопку для генерации расписания с текущими настройками
-                    </p>
                 </div>
             </div>
         </div>
@@ -505,6 +537,38 @@
                 <button type="button" class="btn btn-danger" id="confirmClearScheduleBtn">
                     <i class="bi bi-trash"></i> Очистить расписание
                 </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Модальное окно: Генерация расписания -->
+<div class="modal fade" id="generationModal" tabindex="-1">
+    <div class="modal-dialog modal-dialog-centered">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">
+                    <i class="bi bi-magic"></i> Генерация расписания
+                </h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Закрыть"></button>
+            </div>
+            <div class="modal-body">
+                <div class="text-center w-100 mb-3">
+                    <button class="btn btn-secondary btn-sm w-100 mb-3" id="openFilterFromGenerationBtn">
+                        <i class="bi bi-funnel"></i> Настройки фильтра
+                    </button>
+                </div>
+                <div class="text-center w-100">
+                    <button class="btn btn-warning btn-lg w-100 mb-3" id="generateScheduleBtnDirect" style="min-height: 60px;">
+                        <i class="bi bi-magic"></i> Сгенерировать расписание
+                    </button>
+                    <p class="text-muted small">
+                        Нажмите кнопку для генерации расписания с текущими настройками
+                    </p>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Закрыть</button>
             </div>
         </div>
     </div>
@@ -764,60 +828,50 @@
 <script>
 const DAYS = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
-// Функционал изменения размера окон
+// Обработчик кнопки открытия модального окна генерации
 (function() {
-    const resizer = document.getElementById('resizer');
-    const schedulePanel = document.getElementById('schedulePanel');
-    const botPanel = document.getElementById('botPanel');
+    const showGenerationModalBtn = document.getElementById('showGenerationModalBtn');
+    if (showGenerationModalBtn) {
+        showGenerationModalBtn.addEventListener('click', function() {
+            const generationModal = new bootstrap.Modal(document.getElementById('generationModal'));
+            generationModal.show();
+        });
+    }
     
-    if (!resizer || !schedulePanel || !botPanel) return;
+    // Обработчик для открытия модального окна фильтра из модального окна генерации
+    const openFilterFromGenerationBtn = document.getElementById('openFilterFromGenerationBtn');
+    if (openFilterFromGenerationBtn) {
+        openFilterFromGenerationBtn.addEventListener('click', function() {
+            // Закрываем модальное окно генерации
+            const generationModalElement = document.getElementById('generationModal');
+            if (generationModalElement) {
+                const generationModal = bootstrap.Modal.getInstance(generationModalElement);
+                if (generationModal) {
+                    generationModal.hide();
+                }
+            }
+            // Открываем модальное окно фильтра
+            const filterModal = new bootstrap.Modal(document.getElementById('filterSettingsModal'));
+            filterModal.show();
+        });
+    }
     
-    let isResizing = false;
-    let startX = 0;
-    let startScheduleWidth = 0;
-    let startBotWidth = 0;
-    
-    resizer.addEventListener('mousedown', function(e) {
-        isResizing = true;
-        resizer.classList.add('active');
-        startX = e.clientX;
-        startScheduleWidth = schedulePanel.offsetWidth;
-        startBotWidth = botPanel.offsetWidth;
-        document.body.style.cursor = 'col-resize';
-        document.body.style.userSelect = 'none';
-        e.preventDefault();
-    });
-    
-    document.addEventListener('mousemove', function(e) {
-        if (!isResizing) return;
-        
-        const diff = e.clientX - startX;
-        const containerWidth = schedulePanel.parentElement.offsetWidth;
-        const resizerWidth = resizer.offsetWidth;
-        const availableWidth = containerWidth - resizerWidth;
-        
-        // Вычисляем новые ширины в процентах
-        const newScheduleWidth = ((startScheduleWidth + diff) / availableWidth) * 100;
-        const newBotWidth = ((startBotWidth - diff) / availableWidth) * 100;
-        
-        // Ограничиваем минимальную и максимальную ширину
-        const minWidth = 20; // 20% от общей ширины
-        const maxWidth = 80; // 80% от общей ширины
-        
-        if (newScheduleWidth >= minWidth && newScheduleWidth <= maxWidth) {
-            schedulePanel.style.flex = `0 0 ${newScheduleWidth}%`;
-            botPanel.style.flex = `0 0 ${newBotWidth}%`;
-        }
-    });
-    
-    document.addEventListener('mouseup', function() {
-        if (isResizing) {
-            isResizing = false;
-            resizer.classList.remove('active');
-            document.body.style.cursor = '';
-            document.body.style.userSelect = '';
-        }
-    });
+    // Обработчик для возврата к модальному окну генерации после закрытия фильтра
+    const filterSettingsModal = document.getElementById('filterSettingsModal');
+    if (filterSettingsModal) {
+        filterSettingsModal.addEventListener('hidden.bs.modal', function() {
+            // Проверяем, была ли кнопка фильтра нажата из модального окна генерации
+            // Если да, открываем обратно модальное окно генерации
+            const generationModalElement = document.getElementById('generationModal');
+            if (generationModalElement) {
+                // Небольшая задержка для корректного закрытия предыдущего модального окна
+                setTimeout(function() {
+                    const generationModal = new bootstrap.Modal(generationModalElement);
+                    generationModal.show();
+                }, 300);
+            }
+        });
+    }
 })();
 
 // Функционал изменения размера чата по горизонтали
@@ -1960,6 +2014,80 @@ document.addEventListener('DOMContentLoaded', function() {
     if (activeTab && activeTab.getAttribute('data-bs-target') === '#temporary-schedule') {
         autoLoadTemporaryScheduleIfExists();
     }
+    
+    // Инициализация синхронизации прокрутки для таблиц расписания
+    function initTableScrollSync() {
+        function setupScrollSync(tableId, scrollbarId) {
+            const table = document.getElementById(tableId);
+            if (!table) return;
+            
+            const tableWrapper = table.closest('.table-wrapper');
+            const scrollbarContainer = document.getElementById(scrollbarId);
+            
+            if (!tableWrapper || !scrollbarContainer) return;
+            
+            // Функция для обновления ширины контейнера прокрутки
+            const updateScrollbarWidth = () => {
+                const tableWidth = table.scrollWidth;
+                const scrollbarContent = scrollbarContainer.querySelector('div');
+                if (scrollbarContent) {
+                    scrollbarContent.style.width = tableWidth + 'px';
+                }
+            };
+            
+            // Обновляем ширину при изменении размера
+            updateScrollbarWidth();
+            const resizeObserver = new ResizeObserver(() => {
+                updateScrollbarWidth();
+            });
+            if (table) resizeObserver.observe(table);
+            if (tableWrapper) resizeObserver.observe(tableWrapper);
+            
+            // Синхронизация прокрутки: таблица -> scrollbar
+            let isScrolling = false;
+            tableWrapper.addEventListener('scroll', function() {
+                if (!isScrolling) {
+                    isScrolling = true;
+                    scrollbarContainer.scrollLeft = tableWrapper.scrollLeft;
+                    requestAnimationFrame(() => { isScrolling = false; });
+                }
+            });
+            
+            // Синхронизация прокрутки: scrollbar -> таблица
+            scrollbarContainer.addEventListener('scroll', function() {
+                if (!isScrolling) {
+                    isScrolling = true;
+                    tableWrapper.scrollLeft = scrollbarContainer.scrollLeft;
+                    requestAnimationFrame(() => { isScrolling = false; });
+                }
+            });
+            
+            // Обновляем ширину после отрисовки
+            setTimeout(updateScrollbarWidth, 100);
+        }
+        
+        // Инициализируем синхронизацию для обеих таблиц
+        setupScrollSync('scheduleTable', 'scheduleTableScrollbar');
+        setupScrollSync('temporaryScheduleTable', 'temporaryScheduleTableScrollbar');
+        
+        // Обновляем синхронизацию после отрисовки таблиц
+        const mutationObserver = new MutationObserver(() => {
+            setupScrollSync('scheduleTable', 'scheduleTableScrollbar');
+            setupScrollSync('temporaryScheduleTable', 'temporaryScheduleTableScrollbar');
+        });
+        
+        const scheduleTableBody = document.getElementById('scheduleTableBody');
+        const temporaryTableBody = document.getElementById('temporaryScheduleTableBody');
+        if (scheduleTableBody) {
+            mutationObserver.observe(scheduleTableBody, { childList: true, subtree: true });
+        }
+        if (temporaryTableBody) {
+            mutationObserver.observe(temporaryTableBody, { childList: true, subtree: true });
+        }
+    }
+    
+    // Инициализируем синхронизацию прокрутки
+    setTimeout(initTableScrollSync, 100);
 });
 
 // Инициализация временного расписания
@@ -2863,6 +2991,15 @@ document.addEventListener('DOMContentLoaded', function() {
                         
                         // Перезагружаем расписание
                         loadSchedule();
+                        
+                        // Закрываем модальное окно генерации
+                        const generationModalElement = document.getElementById('generationModal');
+                        if (generationModalElement) {
+                            const generationModal = bootstrap.Modal.getInstance(generationModalElement);
+                            if (generationModal) {
+                                generationModal.hide();
+                            }
+                        }
                     } else {
                         let errorMsg = data.error || 'Ошибка при генерации расписания';
                         if (data.summary) {

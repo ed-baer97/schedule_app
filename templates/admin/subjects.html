@@ -740,9 +740,17 @@
             })
             .then(data => {
                 if (data.success) {
+                    // Логируем данные для отладки
+                    console.log('[manage-classes] Получены данные:', {
+                        teacher_classes: data.teacher_classes,
+                        teacher_classes_length: data.teacher_classes ? data.teacher_classes.length : 0,
+                        teacher_classes_type: typeof data.teacher_classes,
+                        is_array: Array.isArray(data.teacher_classes)
+                    });
+                    
                     // Обновляем список привязанных классов
                     const teacherClassesList = document.getElementById('teacherClassesList');
-                    if (data.teacher_classes.length > 0) {
+                    if (data.teacher_classes && data.teacher_classes.length > 0) {
                         teacherClassesList.innerHTML = data.teacher_classes.map(c =>
                             `<span class="badge bg-primary me-2 mb-2">${c.name}</span>`
                         ).join('');
@@ -753,8 +761,13 @@
                     // Заполняем список всех классов
                     const allClassesList = document.getElementById('allClassesList');
                     if (data.all_classes && data.all_classes.length > 0) {
+                        // Убеждаемся, что teacher_classes существует и является массивом
+                        const teacherClasses = Array.isArray(data.teacher_classes) ? data.teacher_classes : [];
+                        console.log('[manage-classes] teacherClasses для галочек:', teacherClasses, 'длина:', teacherClasses.length);
                         allClassesList.innerHTML = data.all_classes.map(c => {
-                            const isChecked = data.teacher_classes.some(tc => tc.id === c.id);
+                            // Если teacher_classes пустой, галочки не ставятся
+                            const isChecked = teacherClasses.length > 0 && teacherClasses.some(tc => tc.id === c.id);
+                            console.log(`[manage-classes] Класс ${c.name} (id=${c.id}): isChecked=${isChecked}, teacherClasses.length=${teacherClasses.length}`);
                             return `
                                 <div class="form-check">
                                     <input class="form-check-input class-checkbox" type="checkbox" 
@@ -864,12 +877,7 @@
         const selectedClasses = Array.from(document.querySelectorAll('.class-checkbox:checked'))
             .map(cb => parseInt(cb.value));
         
-        if (selectedClasses.length === 0) {
-            if (!confirm('Вы убрали все классы. Учитель будет удален из этого предмета. Продолжить?')) {
-                return;
-            }
-        }
-        
+        // Учитель может быть в предмете без классов - это нормально
         fetch(`/admin/teachers/${teacherId}/classes`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -890,7 +898,7 @@
                     }
                 }
                 if (selectedClasses.length === 0) {
-                    alert('Учитель удален из предмета');
+                    alert('Классы учителя удалены. Учитель остается в предмете без классов.');
                 } else {
                     alert('Классы учителя успешно обновлены');
                 }

@@ -249,7 +249,16 @@ def before_request_func():
 
 @app.route('/')
 def public_index():
-    return render_template('public/index.html')
+    """Главная страница - перенаправляет на авторизацию или панель управления"""
+    if current_user.is_authenticated:
+        # Если пользователь уже авторизован, перенаправляем на соответствующую панель
+        if current_user.is_super_admin():
+            return redirect(url_for('super_admin_dashboard'))
+        else:
+            return redirect(url_for('api.admin_index'))
+    else:
+        # Если не авторизован, перенаправляем на страницу входа
+        return redirect(url_for('login'))
 
 # ==================== АВТОРИЗАЦИЯ ====================
 
@@ -854,4 +863,7 @@ def test_excel_structure():
 
 if __name__ == '__main__':
     import sys
-    app.run(debug=True)
+    # Для локальной разработки
+    port = int(os.environ.get('PORT', 5000))
+    debug = os.environ.get('FLASK_DEBUG', 'False').lower() == 'true'
+    app.run(host='0.0.0.0', port=port, debug=debug)

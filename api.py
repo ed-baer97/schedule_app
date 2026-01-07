@@ -832,57 +832,95 @@ def update_hours():
 @api_bp.route('/admin/add_teacher_to_subject', methods=['POST'])
 @admin_required
 def add_teacher_to_subject():
-    """Добавить учителя к предмету"""
+    """Добавить учителя к предмету
+    
+    ВАЖНО: 
+    - Учитель добавляется к предмету БЕЗ классов (классы назначаются отдельно)
+    - Учитель может преподавать несколько предметов
+    """
+    import logging
+    logger = logging.getLogger(__name__)
+    
     school_id = get_current_school_id()
     if not school_id:
+        logger.error("add_teacher_to_subject: Школа не найдена")
         return jsonify({'success': False, 'error': 'Школа не найдена'}), 400
     
     data = request.get_json()
     teacher_id = data.get('teacher_id')
     subject_id = data.get('subject_id')
     
+    logger.info(f"add_teacher_to_subject: teacher_id={teacher_id}, subject_id={subject_id}")
+    
+    if not teacher_id or not subject_id:
+        logger.error(f"add_teacher_to_subject: Не указаны teacher_id или subject_id")
+        return jsonify({'success': False, 'error': 'Не указаны teacher_id или subject_id'}), 400
+    
     with school_db_context(school_id):
         active_shift = db.session.query(Shift).filter_by(is_active=True).first()
         if not active_shift:
+            logger.error("add_teacher_to_subject: Нет активной смены")
             return jsonify({'success': False, 'error': 'Нет активной смены'}), 400
         
         shift_id = active_shift.id
+        logger.info(f"add_teacher_to_subject: shift_id={shift_id}")
 
-        # Получаем классы, для которых есть ClassLoad (общая нагрузка, shift_id = None)
-        classes = db.session.query(ClassGroup).join(ClassLoad).filter(
+        # Учитель может преподавать несколько предметов
+        # Проверяем только, не добавлен ли уже учитель к этому предмету
+        existing_assignment = db.session.query(TeacherAssignment).filter_by(
+            shift_id=shift_id,
+            teacher_id=teacher_id,
+            subject_id=subject_id
+        ).first()
+        
+        if existing_assignment:
+            logger.warning(f"add_teacher_to_subject: Учитель уже добавлен к этому предмету")
+            return jsonify({'success': False, 'error': 'Учитель уже добавлен к этому предмету'}), 400
+
+        # Учитель добавляется к предмету БЕЗ автоматического назначения всех классов
+        # Создаем TeacherAssignment только для одного класса (первого доступного) с hours_per_week=0
+        # Это нужно для отображения учителя в списке, но классы будут назначены отдельно
+        
+        # Получаем первый класс, для которого есть ClassLoad для этого предмета
+        first_class = db.session.query(ClassGroup).join(ClassLoad).filter(
             ClassLoad.subject_id == subject_id,
             ClassLoad.shift_id.is_(None)
-        ).all()
+        ).first()
         
-        # Если нет классов с ClassLoad shift_id=None, получаем все классы с ClassLoad для этого предмета (для обратной совместимости)
-        if not classes:
-            classes = db.session.query(ClassGroup).join(ClassLoad).filter(
+        # Если нет классов с ClassLoad shift_id=None, получаем первый класс с ClassLoad для этого предмета
+        if not first_class:
+            first_class = db.session.query(ClassGroup).join(ClassLoad).filter(
                 ClassLoad.subject_id == subject_id
-            ).distinct().all()
-        
-        # Если все еще нет классов, получаем все классы
-        if not classes:
-            classes = db.session.query(ClassGroup).all()
-
-        for cls in classes:
-            existing = db.session.query(TeacherAssignment).filter_by(
-                shift_id=shift_id,
-                teacher_id=teacher_id, 
-                subject_id=subject_id, 
-                class_id=cls.id
             ).first()
-            if not existing:
-                assignment = TeacherAssignment(
-                    shift_id=shift_id,
-                    teacher_id=teacher_id,
-                    subject_id=subject_id,
-                    class_id=cls.id,
-                    hours_per_week=0
-                )
-                db.session.add(assignment)
+        
+        # Если все еще нет классов, получаем первый класс вообще
+        if not first_class:
+            first_class = db.session.query(ClassGroup).first()
+        
+        if not first_class:
+            logger.error("add_teacher_to_subject: Нет классов в базе данных")
+            return jsonify({'success': False, 'error': 'Нет классов в базе данных'}), 400
 
-        db.session.commit()
-        return jsonify({'success': True})
+        # Создаем TeacherAssignment для одного класса с hours_per_week=0
+        # Это маркер того, что учитель добавлен к предмету, но классы еще не назначены
+        try:
+            assignment = TeacherAssignment(
+                shift_id=shift_id,
+                teacher_id=teacher_id,
+                subject_id=subject_id,
+                class_id=first_class.id,
+                hours_per_week=0
+            )
+            db.session.add(assignment)
+            db.session.commit()
+            logger.info(f"add_teacher_to_subject: Успешно добавлен учитель {teacher_id} к предмету {subject_id}")
+            return jsonify({'success': True, 'message': 'Учитель добавлен к предмету. Теперь назначьте классы через кнопку "Классы".'})
+        except Exception as e:
+            db.session.rollback()
+            logger.error(f"add_teacher_to_subject: Ошибка при создании назначения: {str(e)}")
+            import traceback
+            logger.error(traceback.format_exc())
+            return jsonify({'success': False, 'error': f'Ошибка при добавлении учителя: {str(e)}'}), 500
 
 @api_bp.route('/admin/remove_teacher_from_subject', methods=['POST'])
 @admin_required
@@ -969,9 +1007,33 @@ def manage_teacher_classes(teacher_id):
                     # Если есть несколько назначений для разных смен, приоритет отдаем активной смене
                     # Но если их нет для активной смены, берем все
                 
-                class_ids_list = [ta.class_id for ta in teacher_assignments if ta.class_id]
-                classes = db.session.query(ClassGroup).filter(ClassGroup.id.in_(class_ids_list)).all() if class_ids_list else []
-                teacher_classes = [{'id': c.id, 'name': c.name} for c in classes]
+                # Если у учителя только одно назначение с hours_per_week = 0,
+                # считаем, что классы еще не назначены (это "пустая" запись при добавлении учителя)
+                # В этом случае не показываем классы и не ставим галочки
+                if len(teacher_assignments) == 1:
+                    first_assignment = teacher_assignments[0]
+                    hours = getattr(first_assignment, "hours_per_week", None)
+                    # Преобразуем в int для надежности
+                    try:
+                        hours_int = int(hours) if hours is not None else None
+                    except (ValueError, TypeError):
+                        hours_int = None
+                    
+                    if hours_int == 0:
+                        # Это маркер того, что учитель добавлен к предмету без классов
+                        teacher_classes = []
+                    else:
+                        # Если hours != 0, обрабатываем нормально
+                        class_ids_list = [ta.class_id for ta in teacher_assignments if ta.class_id]
+                        classes = db.session.query(ClassGroup).filter(ClassGroup.id.in_(class_ids_list)).all() if class_ids_list else []
+                        teacher_classes = [{'id': c.id, 'name': c.name} for c in classes]
+                elif len(teacher_assignments) == 0:
+                    teacher_classes = []
+                else:
+                    # Если назначений больше одного, обрабатываем нормально
+                    class_ids_list = [ta.class_id for ta in teacher_assignments if ta.class_id]
+                    classes = db.session.query(ClassGroup).filter(ClassGroup.id.in_(class_ids_list)).all() if class_ids_list else []
+                    teacher_classes = [{'id': c.id, 'name': c.name} for c in classes]
             else:
                 # Работаем с общей таблицей teacher_classes
                 from app.models.school import _get_teacher_classes_table
@@ -1041,7 +1103,6 @@ def manage_teacher_classes(teacher_id):
                         shift_id = active_shift.id
                     
                     # Удаляем ВСЕ старые TeacherAssignment для этого учителя, предмета и смены
-                    # Это важно: если убраны все галочки, учитель должен быть удален из предмета
                     deleted_count = db.session.query(TeacherAssignment).filter_by(
                         teacher_id=teacher_id,
                         subject_id=subject_id,
@@ -1049,7 +1110,8 @@ def manage_teacher_classes(teacher_id):
                     ).delete()
                     
                     # Добавляем новые TeacherAssignment для выбранных классов
-                    # Если class_ids пустой, учитель будет полностью удален из предмета
+                    # Если class_ids пустой, создаем одно назначение с hours_per_week=0 как маркер,
+                    # что учитель добавлен к предмету, но классы еще не назначены
                     if class_ids:
                         for class_id in class_ids:
                             # Проверяем, есть ли ClassLoad для этого класса и предмета (общая нагрузка, shift_id = None)
@@ -1086,6 +1148,47 @@ def manage_teacher_classes(teacher_id):
                                         default_cabinet=None
                                     )
                                     db.session.add(assignment)
+                    else:
+                        # Если class_ids пустой, создаем одно назначение с hours_per_week=0
+                        # Это маркер того, что учитель добавлен к предмету, но классы еще не назначены
+                        # Получаем первый класс для этого предмета (любой, нужен только для создания записи)
+                        first_class_load = db.session.query(ClassLoad).filter_by(
+                            subject_id=subject_id,
+                            shift_id=None
+                        ).first()
+                        
+                        # Если нет ClassLoad с shift_id=None, получаем любую
+                        if not first_class_load:
+                            first_class_load = db.session.query(ClassLoad).filter_by(
+                                subject_id=subject_id
+                            ).first()
+                        
+                        # Если все еще нет, получаем первый класс вообще
+                        if not first_class_load:
+                            first_class = db.session.query(ClassGroup).first()
+                        else:
+                            first_class = db.session.query(ClassGroup).filter_by(id=first_class_load.class_id).first()
+                        
+                        if first_class:
+                            # Проверяем, нет ли уже такого назначения
+                            existing = db.session.query(TeacherAssignment).filter_by(
+                                teacher_id=teacher_id,
+                                subject_id=subject_id,
+                                class_id=first_class.id,
+                                shift_id=shift_id
+                            ).first()
+                            
+                            if not existing:
+                                # Создаем маркерное назначение с hours_per_week=0
+                                assignment = TeacherAssignment(
+                                    teacher_id=teacher_id,
+                                    subject_id=subject_id,
+                                    class_id=first_class.id,
+                                    shift_id=shift_id,
+                                    hours_per_week=0,
+                                    default_cabinet=None
+                                )
+                                db.session.add(assignment)
                 else:
                     # Работаем с общей таблицей teacher_classes
                     from app.models.school import _get_teacher_classes_table

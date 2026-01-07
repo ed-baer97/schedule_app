@@ -6,7 +6,8 @@ class Config:
     # БД управляется через db_manager.py (system.db и databases/school_*.db)
     SQLALCHEMY_TRACK_MODIFICATIONS = False
     UPLOAD_FOLDER = os.path.join(BASE_DIR, 'uploads')
-    SECRET_KEY = 'change-me-in-production'
+    # SECRET_KEY должен быть установлен через переменную окружения в продакшене
+    SECRET_KEY = os.environ.get('SECRET_KEY', 'change-me-in-production')
     
     # Telegram Bot API настройки
     TELEGRAM_BOT_TOKEN = os.environ.get('TELEGRAM_BOT_TOKEN', '8266665318:AAH9vyLlel7UoAWT4iyRBqWCIbnpLkEnvcM')  # Токен бота из @BotFather
