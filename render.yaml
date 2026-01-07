@@ -2,21 +2,15 @@ services:
   - type: web
     name: schedule-app
     env: python
-    plan: free
-    # ⚠️ ВАЖНО: Установите Python 3.11.0 вручную в настройках сервиса (Settings → Environment → Python Version)
-    # Переменная PYTHON_VERSION здесь может не работать - Render все равно может использовать Python 3.13
-    buildCommand: pip install --upgrade pip setuptools wheel && pip install --prefer-binary -r requirements.txt
+    buildCommand: pip install --upgrade pip && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
-      - key: SECRET_KEY
-        generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
-      # Переменные для ускорения сборки
-      - key: PIP_NO_CACHE_DIR
-        value: "1"
-      - key: PIP_DISABLE_PIP_VERSION_CHECK
-        value: "1"
+      - key: SECRET_KEY
+        generateValue: true
+      - key: FLASK_ENV
+        value: production
       # Добавьте остальные переменные окружения через панель Render
       # или раскомментируйте и заполните:
       # - key: TELEGRAM_BOT_TOKEN
