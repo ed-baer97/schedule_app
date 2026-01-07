@@ -13,7 +13,3 @@ openpyxl==3.1.5
 # HTTP and API
 requests==2.31.0
 openai==1.12.0
-
-# Optimization libraries (these may take longer to build)
-ortools==9.9.3963
-deap==1.4.1
