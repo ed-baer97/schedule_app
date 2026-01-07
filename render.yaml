@@ -3,13 +3,18 @@ services:
     name: schedule-app
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install --upgrade pip setuptools wheel && pip install -r requirements.txt
     startCommand: gunicorn app:app
     envVars:
       - key: SECRET_KEY
         generateValue: true
       - key: PYTHON_VERSION
         value: 3.11.0
+      # Переменные для ускорения сборки
+      - key: PIP_NO_CACHE_DIR
+        value: "1"
+      - key: PIP_DISABLE_PIP_VERSION_CHECK
+        value: "1"
       # Добавьте остальные переменные окружения через панель Render
       # или раскомментируйте и заполните:
       # - key: TELEGRAM_BOT_TOKEN
