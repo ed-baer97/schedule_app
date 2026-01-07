@@ -29,14 +29,13 @@
    - Нажмите "New +" → "Web Service"
    - Подключите ваш репозиторий
    - Render автоматически определит настройки из `render.yaml` или вы можете настроить вручную:
-     - **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt`
+     - **Build Command**: `pip install --upgrade pip setuptools wheel && pip install --prefer-binary -r requirements.txt`
      - **Start Command**: `gunicorn app:app`
      - **Environment**: `Python 3`
      - **Python Version**: `3.11.0` ⚠️ **ВАЖНО**: Укажите вручную в настройках сервиса!
    
    ⚠️ **Важно**: 
-   - Установка зависимостей может занять 5-10 минут из-за пакетов `numpy`, `pandas` и `ortools`, которые требуют компиляции. Это нормально!
-   - Процесс может зависнуть на этапе "Preparing metadata (pyproject.toml)" - просто подождите.
+   - Build command использует `--prefer-binary` для установки предкомпилированных wheels, что избегает этапа "Preparing metadata (pyproject.toml)" и ускоряет установку
    - Если Render использует Python 3.13+, это может вызвать проблемы. Обязательно укажите Python 3.11.0 в настройках!
 
 3. **Настройка переменных окружения**

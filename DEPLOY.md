@@ -18,7 +18,7 @@
    - **Name**: `schedule-app` (или любое другое имя)
    - **Environment**: `Python 3`
    - **Python Version**: `3.11.0` (⚠️ ВАЖНО: укажите вручную в настройках!)
-   - **Build Command**: `pip install --upgrade pip && pip install -r requirements.txt`
+   - **Build Command**: `pip install --upgrade pip setuptools wheel && pip install --prefer-binary -r requirements.txt`
    - **Start Command**: `gunicorn app:app`
    - **Plan**: `Free` (для начала)
    
@@ -75,10 +75,10 @@
 - См. подробную инструкцию: `RENDER_SETUP.md`
 - Кратко: в настройках сервиса укажите Python Version: `3.11.0`
 
-**Долгая установка зависимостей (5-10 минут):**
-- Это нормально! Пакеты `numpy`, `pandas` и `ortools` требуют компиляции
-- Процесс может зависнуть на этапе "Preparing metadata (pyproject.toml)" - это нормально
-- Подождите завершения установки, не прерывайте процесс
+**Долгая установка зависимостей:**
+- Build command использует `--prefer-binary` для установки предкомпилированных wheels
+- Это избегает этапа "Preparing metadata (pyproject.toml)" и ускоряет установку
+- Если wheels недоступны, будет использована сборка из исходников (может занять больше времени)
 
 **Приложение не запускается:**
 - Проверьте логи в панели Render
